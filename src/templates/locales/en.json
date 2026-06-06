@@ -1,0 +1,10 @@
+{
+  "margin_call_title": "Margin Call Warning",
+  "buy_executed": "Buy Order Executed",
+  "sell_executed": "Sell Order Executed",
+  "sip_reminder": "SIP Due Reminder",
+  "kyc_expiry": "KYC Expiry Warning",
+  "profit": "Profit",
+  "loss": "Loss",
+  "urgent": "URGENT"
+}
