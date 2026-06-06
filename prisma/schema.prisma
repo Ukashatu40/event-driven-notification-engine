@@ -1,0 +1,320 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String    @unique @db.VarChar(255)
+  phone               String    @unique @db.VarChar(20)
+  name                String    @db.VarChar(255)
+  language            Language  @default(EN)
+  timezone            String    @default("Asia/Kolkata") @db.VarChar(50)
+  accountType         AccountType @default(BASIC)
+  riskProfile         RiskProfile @default(MODERATE)
+  dndStatus           DndStatus  @default(NOT_REGISTERED)
+  dndCategories       String[]
+  quietHoursStart     String    @default("21:00") @db.VarChar(5)
+  quietHoursEnd       String    @default("08:00") @db.VarChar(5)
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now()) @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @db.Timestamptz
+
+  notifications       Notification[]
+  preferences         UserPreference[]
+  segments            UserSegmentMembership[]
+  consentRecords      ConsentRecord[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([accountType])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────
+// NOTIFICATIONS (partitioned in migration)
+// ─────────────────────────────────────────
+model Notification {
+  id                  String              @id @default(uuid()) @db.Uuid
+  eventType           String              @db.VarChar(10)
+  eventId             String              @db.VarChar(100)
+  userId              String              @db.Uuid
+  channel             String              @db.VarChar(20)
+  priority            Int                 @default(5)
+  status              NotificationStatus  @default(CREATED)
+  templateId          String              @db.VarChar(50)
+  templateVersion     Int                 @default(1)
+  personalisationData Json
+  renderedContent     Json?
+  provider            String?             @db.VarChar(30)
+  externalId          String?             @db.VarChar(100)
+  deliveryAttempts    Int                 @default(0)
+  maxRetries          Int                 @default(3)
+  nextRetryAt         DateTime?           @db.Timestamptz
+  deliveredAt         DateTime?           @db.Timestamptz
+  readAt              DateTime?           @db.Timestamptz
+  failedReason        String?             @db.Text
+  costPaisa           Int?
+  metadata            Json?
+  correlationId       String              @db.Uuid
+  idempotencyKey      String?             @db.VarChar(255)
+  dndChecked          Boolean             @default(false)
+  dndCheckTimestamp   DateTime?           @db.Timestamptz
+  dndResult           String?             @db.VarChar(20)
+  classification      MessageClassification @default(TRANSACTIONAL)
+  regulatoryOverride  Boolean             @default(false)
+  createdAt           DateTime            @default(now()) @db.Timestamptz
+  updatedAt           DateTime            @updatedAt @db.Timestamptz
+
+  user                User                @relation(fields: [userId], references: [id])
+  stateLogs           NotificationStateLog[]
+  deliveryAttemptLogs DeliveryAttempt[]
+  dlqEntry            DeadLetterQueue?
+
+  @@index([userId, status, channel])
+  @@index([status])
+  @@index([eventType, createdAt])
+  @@index([correlationId])
+  @@index([idempotencyKey])
+  @@index([nextRetryAt])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────
+// NOTIFICATION STATE LOG (immutable audit)
+// ─────────────────────────────────────────
+model NotificationStateLog {
+  id              BigInt    @id @default(autoincrement())
+  notificationId  String    @db.Uuid
+  fromStatus      String?   @db.VarChar(20)
+  toStatus        String    @db.VarChar(20)
+  actor           String    @db.VarChar(50)
+  metadata        Json?
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+
+  notification    Notification @relation(fields: [notificationId], references: [id])
+
+  @@index([notificationId])
+  @@index([createdAt])
+  @@map("notification_state_log")
+}
+
+// ─────────────────────────────────────────
+// DELIVERY ATTEMPTS
+// ─────────────────────────────────────────
+model DeliveryAttempt {
+  id              String    @id @default(uuid()) @db.Uuid
+  notificationId  String    @db.Uuid
+  attemptNumber   Int
+  provider        String    @db.VarChar(30)
+  status          String    @db.VarChar(20)
+  requestPayload  Json?
+  responsePayload Json?
+  errorCode       String?   @db.VarChar(50)
+  errorMessage    String?   @db.Text
+  latencyMs       Int?
+  costPaisa       Int?
+  attemptedAt     DateTime  @default(now()) @db.Timestamptz
+
+  notification    Notification @relation(fields: [notificationId], references: [id])
+
+  @@index([notificationId])
+  @@index([provider, attemptedAt])
+  @@map("delivery_attempts")
+}
+
+// ─────────────────────────────────────────
+// DEAD LETTER QUEUE
+// ─────────────────────────────────────────
+model DeadLetterQueue {
+  id                String    @id @default(uuid()) @db.Uuid
+  notificationId    String    @unique @db.Uuid
+  originalEvent     Json
+  failureReason     String    @db.Text
+  retryCount        Int
+  lastError         String?   @db.Text
+  resolved          Boolean   @default(false)
+  resolvedBy        String?   @db.VarChar(50)
+  resolvedAt        DateTime? @db.Timestamptz
+  resolutionAction  String?   @db.VarChar(50)
+  createdAt         DateTime  @default(now()) @db.Timestamptz
+
+  notification      Notification @relation(fields: [notificationId], references: [id])
+
+  @@index([resolved, createdAt])
+  @@map("dead_letter_queue")
+}
+
+// ─────────────────────────────────────────
+// TEMPLATES
+// ─────────────────────────────────────────
+model Template {
+  id            String    @id @db.VarChar(50)
+  eventType     String    @db.VarChar(10)
+  version       Int       @default(1)
+  isActive      Boolean   @default(true)
+  isAbVariant   Boolean   @default(false)
+  abWeight      Int       @default(100)
+  channels      Json
+  localisations Json
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @db.Timestamptz
+
+  @@unique([eventType, version])
+  @@index([eventType, isActive])
+  @@map("templates")
+}
+
+// ─────────────────────────────────────────
+// USER PREFERENCES
+// ─────────────────────────────────────────
+model UserPreference {
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              String    @db.Uuid
+  eventCategory       String    @db.VarChar(10)
+  eventType           String?   @db.VarChar(10)
+  channel             String    @db.VarChar(20)
+  enabled             Boolean   @default(true)
+  quietHoursOverride  Boolean   @default(false)
+  digestMode          DigestMode @default(IMMEDIATE)
+  priorityOverride    Int?
+  createdAt           DateTime  @default(now()) @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @db.Timestamptz
+
+  user                User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, eventCategory, channel])
+  @@index([userId])
+  @@map("user_preferences")
+}
+
+// ─────────────────────────────────────────
+// USER SEGMENTS
+// ─────────────────────────────────────────
+model UserSegment {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique @db.VarChar(50)
+  description String?   @db.Text
+  rules       Json
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+
+  members     UserSegmentMembership[]
+
+  @@map("user_segments")
+}
+
+model UserSegmentMembership {
+  userId      String    @db.Uuid
+  segmentId   String    @db.Uuid
+  addedAt     DateTime  @default(now()) @db.Timestamptz
+
+  user        User        @relation(fields: [userId], references: [id])
+  segment     UserSegment @relation(fields: [segmentId], references: [id])
+
+  @@id([userId, segmentId])
+  @@map("user_segment_memberships")
+}
+
+// ─────────────────────────────────────────
+// CONSENT RECORDS (immutable — never deleted)
+// ─────────────────────────────────────────
+model ConsentRecord {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  channel       String    @db.VarChar(20)
+  consentType   String    @db.VarChar(30)
+  consentText   String    @db.Text
+  ipAddress     String    @db.VarChar(45)
+  userAgent     String?   @db.Text
+  granted       Boolean
+  grantedAt     DateTime  @default(now()) @db.Timestamptz
+
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, channel])
+  @@index([grantedAt])
+  @@map("consent_records")
+}
+
+// ─────────────────────────────────────────
+// PROVIDER HEALTH
+// ─────────────────────────────────────────
+model ProviderHealth {
+  id              String    @id @default(uuid()) @db.Uuid
+  provider        String    @unique @db.VarChar(30)
+  channel         String    @db.VarChar(20)
+  circuitState    String    @default("CLOSED") @db.VarChar(15)
+  failureCount    Int       @default(0)
+  successCount    Int       @default(0)
+  lastFailureAt   DateTime? @db.Timestamptz
+  lastSuccessAt   DateTime? @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @db.Timestamptz
+
+  @@map("provider_health")
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+enum NotificationStatus {
+  CREATED
+  ENRICHED
+  ROUTED
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  CAPPED
+  QUIET
+  DND
+  FAILED
+  RETRYING
+  DLQ
+  DEDUPLICATED
+  BOUNCED
+}
+
+enum MessageClassification {
+  TRANSACTIONAL
+  PROMOTIONAL
+}
+
+enum Language {
+  EN
+  HI
+  MR
+  TA
+  TE
+}
+
+enum AccountType {
+  BASIC
+  PREMIUM
+  HNI
+}
+
+enum RiskProfile {
+  CONSERVATIVE
+  MODERATE
+  AGGRESSIVE
+}
+
+enum DndStatus {
+  REGISTERED
+  NOT_REGISTERED
+}
+
+enum DigestMode {
+  IMMEDIATE
+  HOURLY
+  DAILY
+}
