@@ -1,0 +1,14 @@
+node_modules
+
+/generated/prisma
+
+/generated/prisma
+
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+/generated/prisma
+/dist
