@@ -1,0 +1,75 @@
+// src/config/env.validation.ts
+import Joi from 'joi';
+
+export const envValidationSchema = Joi.object({
+  // App
+  NODE_ENV: Joi.string()
+    .valid('development', 'staging', 'production', 'test')
+    .default('development'),
+  PORT: Joi.number().default(3000),
+  APP_NAME: Joi.string().default('WealthBridge'),
+
+  // JWT
+  JWT_SECRET: Joi.string().min(32).required(),
+  JWT_EXPIRY: Joi.string().default('1h'),
+  JWT_REFRESH_SECRET: Joi.string().min(32).required(),
+  JWT_REFRESH_EXPIRY: Joi.string().default('7d'),
+
+  // PostgreSQL
+  DB_HOST: Joi.string().required(),
+  DB_PORT: Joi.number().default(5432),
+  DB_NAME: Joi.string().required(),
+  DB_USER: Joi.string().required(),
+  DB_PASSWORD: Joi.string().required(),
+  DATABASE_URL: Joi.string().uri().required(),
+
+  // Redis
+  REDIS_HOST: Joi.string().required(),
+  REDIS_PORT: Joi.number().default(6379),
+  REDIS_PASSWORD: Joi.string().required(),
+  REDIS_DB: Joi.number().default(0),
+
+  // Kafka
+  KAFKA_BROKERS: Joi.string().required(),
+  KAFKA_CLIENT_ID: Joi.string().required(),
+  KAFKA_GROUP_ID_STANDARD: Joi.string().required(),
+  KAFKA_GROUP_ID_CRITICAL: Joi.string().required(),
+
+  // RabbitMQ
+  RABBITMQ_URL: Joi.string().required(),
+  RABBITMQ_EXCHANGE: Joi.string().default('notifications'),
+  RABBITMQ_DLX: Joi.string().default('notifications.dlx'),
+
+  // SMS
+  MSG91_API_KEY: Joi.string().allow('').default(''),
+  MSG91_SENDER_ID: Joi.string().default('WLTHBR'),
+  MSG91_TEMPLATE_ID: Joi.string().allow('').default(''),
+  TWILIO_ACCOUNT_SID: Joi.string().allow('').default(''),
+  TWILIO_AUTH_TOKEN: Joi.string().allow('').default(''),
+  TWILIO_FROM_NUMBER: Joi.string().allow('').default(''),
+
+  // Email
+  SMTP_HOST: Joi.string().required(),
+  SMTP_PORT: Joi.number().default(587),
+  SMTP_USER: Joi.string().allow('').default(''),
+  SMTP_PASS: Joi.string().allow('').default(''),
+  SMTP_FROM: Joi.string().email().required(),
+
+  // FCM
+  FCM_PROJECT_ID: Joi.string().allow('').default(''),
+  FCM_PRIVATE_KEY: Joi.string().allow('').default(''),
+  FCM_CLIENT_EMAIL: Joi.string().allow('').default(''),
+
+  // WhatsApp
+  WHATSAPP_PHONE_ID: Joi.string().allow('').default(''),
+  WHATSAPP_ACCESS_TOKEN: Joi.string().allow('').default(''),
+
+  // Security
+  WEBHOOK_SIGNATURE_SECRET: Joi.string().min(16).required(),
+  CORS_ORIGINS: Joi.string().default('http://localhost:3000'),
+
+  // Feature flags
+  ENABLE_AB_TESTING: Joi.boolean().default(true),
+  ENABLE_SEND_TIME_OPTIMIZATION: Joi.boolean().default(true),
+  ENABLE_WEBSOCKET_DASHBOARD: Joi.boolean().default(true),
+}).options({ allowUnknown: true }); // allows OS env vars to pass through
