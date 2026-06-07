@@ -20,6 +20,8 @@ import { ComplianceModule } from './compliance/compliance.module';
 import { PreferencesModule } from './preferences/preferences.module';
 import { TemplatesModule } from './templates/templates.module';
 import { DeliveryModule } from './delivery/delivery.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -66,6 +68,8 @@ import { DeliveryModule } from './delivery/delivery.module';
     PreferencesModule,
     TemplatesModule,
     DeliveryModule,
+    NotificationsModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}
