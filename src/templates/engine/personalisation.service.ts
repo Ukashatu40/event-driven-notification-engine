@@ -90,14 +90,18 @@ export class PersonalisationService {
   ): Record<string, unknown> {
     const derived: Record<string, unknown> = {};
 
-    // P&L calculation
+    // Read raw values directly from payload (before formatting)
     const buyPrice = payload['buy_price'] as number | undefined;
-    const currentPrice = payload['current_price_raw'] as number | undefined;
+    const currentPrice = payload['current_price'] as number | undefined;
     const qty = payload['qty'] as number | undefined;
 
-    if (buyPrice && currentPrice && qty) {
+    if (
+      typeof buyPrice === 'number' &&
+      typeof currentPrice === 'number' &&
+      typeof qty === 'number'
+    ) {
       const pnl = (currentPrice - buyPrice) * qty;
-      derived['pnl'] = formatCurrency(pnl, locale);
+      derived['pnl'] = formatCurrency(pnl < 0 ? -pnl : pnl, locale);
       derived['pnl_raw'] = pnl;
       derived['pnl_percent'] = (
         ((currentPrice - buyPrice) / buyPrice) *
@@ -107,24 +111,29 @@ export class PersonalisationService {
     }
 
     // Portfolio impact
-    const portfolioValue = payload['portfolio_value_raw'] as number | undefined;
-    const tradeValue =
-      typeof payload['total_raw'] === 'number'
-        ? (payload['total_raw'] as number)
-        : undefined;
+    const portfolioValue = payload['portfolio_value'] as number | undefined;
+    const tradeTotal = payload['total'] as number | undefined;
 
-    if (portfolioValue && tradeValue && portfolioValue > 0) {
+    if (
+      typeof portfolioValue === 'number' &&
+      typeof tradeTotal === 'number' &&
+      portfolioValue > 0
+    ) {
       derived['portfolio_impact_percent'] = (
-        (tradeValue / portfolioValue) *
+        (tradeTotal / portfolioValue) *
         100
       ).toFixed(2);
     }
 
     // Shortfall percentage for margin calls
-    const shortfall = payload['shortfall_amount_raw'] as number | undefined;
-    const required = payload['required_margin_raw'] as number | undefined;
+    const shortfall = payload['shortfall_amount'] as number | undefined;
+    const required = payload['required_margin'] as number | undefined;
 
-    if (shortfall && required && required > 0) {
+    if (
+      typeof shortfall === 'number' &&
+      typeof required === 'number' &&
+      required > 0
+    ) {
       derived['shortfall_percent'] = ((shortfall / required) * 100).toFixed(1);
     }
 
