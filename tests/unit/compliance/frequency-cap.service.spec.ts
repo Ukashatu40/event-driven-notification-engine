@@ -147,8 +147,14 @@ describe('FrequencyCapService', () => {
     });
 
     it('should allow when global daily count is below limit', async () => {
+      // exists = false (no cooldown)
       jest.mocked(mockRedis.exists).mockResolvedValueOnce(false);
-      jest.mocked(mockRedis.get).mockResolvedValue('5');
+      // category hourly = 1 (below cap of 3)
+      jest.mocked(mockRedis.get).mockResolvedValueOnce('1');
+      // channel daily = 1 (below cap)
+      jest.mocked(mockRedis.get).mockResolvedValueOnce('1');
+      // global daily = 5 (below cap of 12)
+      jest.mocked(mockRedis.get).mockResolvedValueOnce('5');
 
       const result = await service.check('user-123', 'SIPX-001', 'email');
 
