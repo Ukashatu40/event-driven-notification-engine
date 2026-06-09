@@ -22,6 +22,7 @@ import { TemplatesModule } from './templates/templates.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -38,7 +39,6 @@ import { AnalyticsModule } from './analytics/analytics.module';
       validationOptions: { allowUnknown: true, abortEarly: false },
       expandVariables: true,
     }),
-
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.NODE_ENV === 'production' ? 'warn' : 'debug',
@@ -57,7 +57,6 @@ import { AnalyticsModule } from './analytics/analytics.module';
         },
       },
     }),
-
     DatabaseModule,
     RedisModule,
     KafkaModule,
@@ -70,6 +69,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     DeliveryModule,
     NotificationsModule,
     AnalyticsModule,
+    EventsModule,
   ],
 })
 export class AppModule {}
