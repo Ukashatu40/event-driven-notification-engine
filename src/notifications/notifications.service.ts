@@ -1,26 +1,24 @@
 // src/notifications/notifications.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../infrastructure/database/prisma.service';
-// import { StateService } from './state-machine/state.service';
+import { StateService } from './state-machine/state.service';
 import { PaginationDto, paginate } from '../shared/dto/pagination.dto';
+// import { type Prisma } from '@prisma/client';
+// import { NotificationStateLog } from '@prisma/client';
 
 @Injectable()
 export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
-    // private readonly stateService: StateService,
+    private readonly stateService: StateService,
   ) {}
 
   async findById(notificationId: string): Promise<object> {
     const notification = await this.prisma.notification.findUnique({
       where: { id: notificationId },
       include: {
-        stateLogs: {
-          orderBy: { createdAt: 'asc' },
-        },
-        deliveryAttemptLogs: {
-          orderBy: { attemptedAt: 'asc' },
-        },
+        stateLogs: { orderBy: { createdAt: 'asc' } },
+        deliveryAttemptLogs: { orderBy: { attemptedAt: 'asc' } },
       },
     });
 
@@ -133,6 +131,16 @@ export class NotificationsService {
         resolutionAction: action,
       },
     });
+
+    // If retrying, reset notification status
+    if (action === 'retry') {
+      await this.stateService.transition(
+        entry.notificationId,
+        'RETRYING' as never,
+        'dlq_manual_retry',
+        { resolvedBy, action },
+      );
+    }
 
     return { resolved: true, action, dlqId };
   }

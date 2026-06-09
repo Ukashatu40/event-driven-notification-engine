@@ -1,7 +1,6 @@
 // src/notifications/engine/notification-engine.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
-// import { KafkaService } from '../../infrastructure/kafka/kafka.service';
 import { RabbitMQService } from '../../infrastructure/rabbitmq/rabbitmq.service';
 import { ConfigService } from '@nestjs/config';
 import { PrometheusService } from '../../health/prometheus/prometheus.service';
@@ -11,7 +10,6 @@ import { RoutingEngineService } from '../routing/routing-engine.service';
 import { TemplateEngineService } from '../../templates/engine/template-engine.service';
 import { FrequencyCapService } from '../../compliance/frequency-cap/frequency-cap.service';
 import { QuietHoursService } from '../../compliance/quiet-hours/quiet-hours.service';
-// import { DeliveryService } from '../../delivery/delivery.service';
 import { NotificationStatus } from '../../shared/constants/notification-states';
 import { type EventType } from '../../shared/constants/event-types';
 import { type Channel } from '../../shared/constants/channels';
@@ -19,24 +17,12 @@ import { type SupportedLocale } from '../../shared/utils/currency.util';
 import { v4 as uuidv4 } from 'uuid';
 import { IngestEventDto } from '../dto/ingest-event.dto';
 
-/**
- * The core pipeline orchestrator.
- *
- * Full pipeline (spec Section A3, Deliverable #9):
- * Event → Deduplication → DB Create → Enrichment → Routing →
- * DND → FrequencyCap → QuietHours → TemplateRender →
- * ChannelSelection → Queue → Delivery → Tracking → Analytics
- *
- * CRITICAL events skip DND/FrequencyCap/QuietHours checks.
- * All state transitions are persisted with actor and timestamp.
- */
 @Injectable()
 export class NotificationEngineService {
   private readonly logger = new Logger(NotificationEngineService.name);
 
   constructor(
     private readonly prisma: PrismaService,
-    // private readonly kafka: KafkaService,
     private readonly rabbitmq: RabbitMQService,
     private readonly config: ConfigService,
     private readonly prometheus: PrometheusService,
@@ -46,7 +32,6 @@ export class NotificationEngineService {
     private readonly templateEngine: TemplateEngineService,
     private readonly frequencyCap: FrequencyCapService,
     private readonly quietHours: QuietHoursService,
-    // private readonly delivery: DeliveryService,
   ) {}
 
   async process(dto: IngestEventDto, correlationId: string): Promise<string> {
@@ -100,7 +85,7 @@ export class NotificationEngineService {
         eventType: dto.eventType,
         eventId: dto.eventId,
         userId: dto.userId,
-        channel: 'pending', // updated after routing
+        channel: 'pending',
         priority: dto.priority,
         status: NotificationStatus.CREATED,
         templateId: `${dto.eventType}-v1`,
@@ -112,7 +97,6 @@ export class NotificationEngineService {
       },
     });
 
-    // Register deduplication keys
     await this.deduplication.register(
       notificationId,
       dto.idempotencyKey,
@@ -164,7 +148,7 @@ export class NotificationEngineService {
       return notificationId;
     }
 
-    // Handle full suppression (all channels capped or DND blocked)
+    // Handle full suppression
     if (routingDecision.channels.length === 0) {
       await this.stateService.transition(
         notificationId,
@@ -203,8 +187,6 @@ export class NotificationEngineService {
     return notificationId;
   }
 
-  // ── Private helpers ───────────────────────────────────────────────
-
   private async renderAndQueue(
     notificationId: string,
     dto: IngestEventDto,
@@ -233,7 +215,6 @@ export class NotificationEngineService {
         appName: this.config.get<string>('app.name') ?? 'WealthBridge',
       });
 
-      // Update rendered content in DB
       await this.prisma.notification.update({
         where: { id: notificationId },
         data: {
@@ -250,22 +231,16 @@ export class NotificationEngineService {
         { channel, templateId },
       );
 
-      // Record frequency cap usage
       await this.frequencyCap.record(
         user.id,
         dto.eventType as EventType,
         channel,
       );
 
-      // Get recipient address for channel
       const recipient = this.resolveRecipient(user, channel);
 
-      // Publish to RabbitMQ for delivery
-      const routingKey = `notifications.${channel}`;
-      const rabbitmqPriority = this.mapPriorityToRabbitMQ(dto.priority);
-
       await this.rabbitmq.publish(
-        routingKey,
+        `notifications.${channel}`,
         {
           notificationId,
           userId: user.id,
@@ -279,19 +254,14 @@ export class NotificationEngineService {
           correlationId,
         },
         {
-          priority: rabbitmqPriority,
+          priority: this.mapPriorityToRabbitMQ(dto.priority),
           correlationId,
           persistent: true,
         },
       );
-
-      this.logger.debug(
-        `Notification ${notificationId} queued to ${channel} for user ${user.id}`,
-      );
     } catch (err) {
       this.logger.error(
-        `Failed to render/queue notification ${notificationId} ` +
-          `for channel ${channel}: ${(err as Error).message}`,
+        `Failed to render/queue ${notificationId} for ${channel}: ${(err as Error).message}`,
       );
     }
   }
@@ -300,20 +270,14 @@ export class NotificationEngineService {
     user: { phone: string; email: string; id: string },
     channel: Channel,
   ): string {
-    switch (channel) {
-      case 'sms':
-        return user.phone;
-      case 'email':
-        return user.email;
-      case 'push':
-        return user.id; // FCM token lookup done in push worker
-      case 'whatsapp':
-        return user.phone;
-      case 'in_app':
-        return user.id;
-      default:
-        return user.id;
-    }
+    const map: Record<Channel, string> = {
+      sms: user.phone,
+      email: user.email,
+      push: user.id,
+      whatsapp: user.phone,
+      in_app: user.id,
+    };
+    return map[channel] ?? user.id;
   }
 
   private mapPriorityToRabbitMQ(priority: number): number {

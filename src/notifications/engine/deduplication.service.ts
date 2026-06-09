@@ -28,6 +28,7 @@ export interface DeduplicationResult {
  *
  * This is the solution to Challenge B2.4 (Notification Storm).
  */
+
 @Injectable()
 export class DeduplicationService {
   private readonly logger = new Logger(DeduplicationService.name);
@@ -85,7 +86,6 @@ export class DeduplicationService {
   ): Promise<void> {
     const ops: Promise<void>[] = [];
 
-    // Register idempotency key
     if (idempotencyKey) {
       ops.push(
         this.redis.set(
@@ -96,13 +96,11 @@ export class DeduplicationService {
       );
     }
 
-    // Register fingerprint
     const fingerprint = generateEventFingerprint(eventType, sourceEntityId);
     ops.push(
       this.redis.set(REDIS_KEYS.dedup(fingerprint), notificationId, TTL.DEDUP),
     );
 
-    // Register computed idempotency key as fallback
     const computedKey = generateIdempotencyKey(
       userId,
       eventType,
