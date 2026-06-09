@@ -1,0 +1,86 @@
+# docker-compose.test.yml
+version: '3.9'
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: notification_postgres_test
+    environment:
+      POSTGRES_DB: notification_engine_test
+      POSTGRES_USER: notification_user
+      POSTGRES_PASSWORD: test_password
+    ports:
+      - '5433:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U notification_user -d notification_engine_test',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: notification_redis_test
+    command: redis-server --requirepass test_password
+    ports:
+      - '6380:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'test_password', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  zookeeper-test:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: notification_zookeeper_test
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2182
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - '2182:2182'
+
+  kafka-test:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: notification_kafka_test
+    depends_on:
+      - zookeeper-test
+    ports:
+      - '9093:9093'
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-test:2182
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-test:29093,EXTERNAL://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'kafka-broker-api-versions --bootstrap-server localhost:9093',
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  rabbitmq-test:
+    image: rabbitmq:3.12-alpine
+    container_name: notification_rabbitmq_test
+    ports:
+      - '5673:5672'
+    environment:
+      RABBITMQ_DEFAULT_USER: notification_user
+      RABBITMQ_DEFAULT_PASS: test_password
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
