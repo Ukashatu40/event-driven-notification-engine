@@ -1,0 +1,50 @@
+{{! templates/email/TXNX-001.hbs }}
+
+<html>
+  <head>
+    <meta charset='utf-8' />
+    <title>Order Executed</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        color: #333;
+      }
+      .success {
+        background: #d4edda;
+        border: 1px solid #28a745;
+        padding: 16px;
+        border-radius: 4px;
+      }
+      .detail-table td {
+        padding: 6px 12px;
+      }
+      .detail-table tr:nth-child(even) {
+        background: #f8f9fa;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Dear {{user_name}},</p>
+
+    <div class='success'>
+      <h2>✅ Buy Order Executed</h2>
+      <table class='detail-table'>
+        <tr><td><strong>Stock:</strong></td><td>{{stock_name}}</td></tr>
+        <tr><td><strong>Quantity:</strong></td><td>{{qty_formatted}}
+            shares</td></tr>
+        <tr><td><strong>Price:</strong></td><td>{{price}}</td></tr>
+        <tr><td><strong>Total Value:</strong></td><td>{{total}}</td></tr>
+        <tr><td><strong>Order ID:</strong></td><td>{{order_id}}</td></tr>
+        <tr><td><strong>Time:</strong></td><td>{{timestamp}}</td></tr>
+        {{#if portfolio_impact_percent}}
+          <tr><td><strong>Portfolio Impact:</strong></td><td
+            >{{portfolio_impact_percent}}%</td></tr>
+        {{/if}}
+      </table>
+    </div>
+
+    <p>View your updated portfolio in the {{app_name}} app.</p>
+
+    <p>Regards,<br />{{app_name}} Trading Team</p>
+  </body>
+</html>

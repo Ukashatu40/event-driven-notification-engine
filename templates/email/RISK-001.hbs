@@ -1,0 +1,70 @@
+{{! templates/email/RISK-001.hbs }}
+
+<html>
+  <head>
+    <meta charset='utf-8' />
+    <title>URGENT: Margin Call</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        color: #333;
+      }
+      .alert {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        padding: 16px;
+        border-radius: 4px;
+      }
+      .critical {
+        background: #f8d7da;
+        border-color: #dc3545;
+      }
+      .amount {
+        font-size: 24px;
+        font-weight: bold;
+        color: #dc3545;
+      }
+      .cta {
+        background: #dc3545;
+        color: white;
+        padding: 12px 24px;
+        text-decoration: none;
+        border-radius: 4px;
+        display: inline-block;
+        margin-top: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Dear {{user_name}},</p>
+
+    <div class='alert critical'>
+      <h2>⚠️ Margin Call Warning</h2>
+      <p>Your trading account has a margin shortfall that requires immediate
+        attention.</p>
+      <p class='amount'>Shortfall: {{shortfall_amount}}</p>
+      <table>
+        <tr><td><strong>Required Margin:</strong></td><td
+          >{{required_margin}}</td></tr>
+        <tr><td><strong>Current Margin:</strong></td><td
+          >{{current_margin}}</td></tr>
+        <tr><td><strong>Shortfall:</strong></td><td
+          >{{shortfall_amount}}</td></tr>
+        <tr><td><strong>Deadline:</strong></td><td>{{deadline}}</td></tr>
+        <tr><td><strong>Auto Square-off:</strong></td><td
+          >{{auto_square_off_time}}</td></tr>
+      </table>
+      <a href='#' class='cta'>Add Funds Now</a>
+    </div>
+
+    <p>If you have already added funds, please allow a few minutes for your
+      account to be updated.</p>
+    <p>For assistance, contact our support team immediately.</p>
+
+    <p>Regards,<br />{{app_name}} Risk Management Team</p>
+    <p style='font-size:11px;color:#999;'>
+      This is a regulatory notification and cannot be disabled. Generated at
+      {{timestamp}}.
+    </p>
+  </body>
+</html>

@@ -1,0 +1,52 @@
+// src/templates/definitions/RISK-001.template.json
+{
+  "templateId": "RISK-001-v1",
+  "eventType": "RISK-001",
+  "version": 1,
+  "channels": {
+    "sms": {
+      "body": "MARGIN CALL: Shortfall {{shortfall_amount}}. Deadline: {{deadline}}. Add funds or positions squared off at {{auto_square_off_time}}. -{{app_name}}",
+      "senderId": "WLTHBR"
+    },
+    "push": {
+      "title": "⚠️ Margin Call Warning",
+      "body": "Shortfall of {{shortfall_amount}}. Deadline {{deadline}}.",
+      "data": { "action": "open_margin_dashboard", "priority": "1" }
+    },
+    "email": {
+      "subject": "URGENT: Margin Call — Action Required by {{deadline}}",
+      "textBody": "Dear {{user_name}}, your account has a margin shortfall of {{shortfall_amount}}. Required margin: {{required_margin}}. Current margin: {{current_margin}}. Please add funds before {{deadline}}."
+    },
+    "in_app": {
+      "title": "Margin Call Warning",
+      "body": "Shortfall {{shortfall_amount}} — add funds by {{deadline}}",
+      "action": "open_margin_dashboard"
+    }
+  },
+  "localisations": {
+    "hi": {
+      "sms": {
+        "body": "मार्जिन कॉल: कमी {{shortfall_amount}}। डेडलाइन: {{deadline}}। फंड जोड़ें। -{{app_name}}"
+      },
+      "push": {
+        "title": "⚠️ मार्जिन कॉल चेतावनी",
+        "body": "{{shortfall_amount}} की कमी। डेडलाइन {{deadline}}।"
+      }
+    },
+    "mr": {
+      "sms": {
+        "body": "मार्जिन कॉल: तूट {{shortfall_amount}}। मुदत: {{deadline}}। निधी जोडा। -{{app_name}}"
+      }
+    },
+    "ta": {
+      "sms": {
+        "body": "மார்ஜின் கால்: குறைபாடு {{shortfall_amount}}. காலக்கெடு: {{deadline}}. -{{app_name}}"
+      }
+    },
+    "te": {
+      "sms": {
+        "body": "మార్జిన్ కాల్: లోటు {{shortfall_amount}}. గడువు: {{deadline}}. -{{app_name}}"
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+// src/templates/definitions/TXNX-001.template.json
+{
+  "templateId": "TXNX-001-v1",
+  "eventType": "TXNX-001",
+  "version": 1,
+  "channels": {
+    "sms": {
+      "body": "{{stock_name}} BUY: {{qty}} shares @ {{price}}. Total: {{total}}. -{{app_name}}",
+      "senderId": "WLTHBR"
+    },
+    "push": {
+      "title": "Buy Order Executed",
+      "body": "{{qty}} {{stock_name}} @ {{price}}",
+      "data": { "action": "open_portfolio", "order_id": "{{order_id}}" }
+    },
+    "email": {
+      "subject": "Order Executed: {{qty}} {{stock_name}} @ {{price}}",
+      "textBody": "Dear {{user_name}}, your buy order has been executed. Stock: {{stock_name}}, Qty: {{qty}}, Price: {{price}}, Total: {{total}}."
+    },
+    "in_app": {
+      "title": "Buy Order Executed",
+      "body": "{{qty}} {{stock_name}} @ {{price}} — Total {{total}}",
+      "action": "open_portfolio"
+    }
+  },
+  "localisations": {
+    "hi": {
+      "sms": {
+        "body": "{{stock_name}} खरीद: {{qty}} शेयर @ {{price}}। कुल: {{total}}। -{{app_name}}"
+      }
+    }
+  }
+}
