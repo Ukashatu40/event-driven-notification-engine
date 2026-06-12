@@ -1,0 +1,1 @@
+time="2026-06-12T16:36:16+01:00" level=error msg="TypeError: Value is not an object: null\n\tat file:///Users/apple/codes/javascript/backend/event-driven-notification-engine/tests/load/market-crash.k6.js:19:25(30)\n" hint="script exception"
