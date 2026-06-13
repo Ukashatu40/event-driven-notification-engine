@@ -1,6 +1,11 @@
 // scripts/seed.ts
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+// Load .env from project root before anything else
+config({ path: resolve(process.cwd(), '.env') });
+
 import { PrismaClient } from '@prisma/client';
-// import { encryptPii } from '../src/shared/utils/fingerprint.util';
 
 const prisma = new PrismaClient();
 
@@ -20,12 +25,11 @@ function generateEmail(index: number): string {
   return `user${index}@wealthbridge-test.in`;
 }
 
-async function seedUsers(count: number): Promise<string[]> {
+async function seedUsers(count: number): Promise<void> {
   console.log(`Seeding ${count} users...`);
-  const ids: string[] = [];
 
   for (let i = 0; i < count; i++) {
-    const isDndRegistered = Math.random() < 0.3; // 30% DND registered per spec
+    const isDndRegistered = Math.random() < 0.3;
 
     const user = await prisma.user.create({
       data: {
@@ -42,15 +46,11 @@ async function seedUsers(count: number): Promise<string[]> {
       },
     });
 
-    ids.push(user.id);
-
-    // Seed default preferences for each user
     const categories = ['TXNX', 'RISK', 'SIPX', 'MKTX', 'REGX'];
     const channels = ['sms', 'email', 'push', 'whatsapp', 'in_app'];
 
     for (const category of categories) {
       for (const channel of channels) {
-        // Premium/HNI users have WhatsApp enabled by default
         const isWhatsAppEnabled =
           channel === 'whatsapp' &&
           ['PREMIUM', 'HNI'].includes(user.accountType);
@@ -69,7 +69,6 @@ async function seedUsers(count: number): Promise<string[]> {
   }
 
   console.log(`✓ Seeded ${count} users`);
-  return ids;
 }
 
 async function seedTemplates(): Promise<void> {
@@ -152,6 +151,9 @@ async function seedProviderHealth(): Promise<void> {
 
 async function main(): Promise<void> {
   console.log('Starting database seed...\n');
+  console.log(
+    `DATABASE_URL: ${process.env.DATABASE_URL ? 'loaded ✓' : 'MISSING ✗'}`,
+  );
 
   await seedTemplates();
   await seedProviderHealth();
