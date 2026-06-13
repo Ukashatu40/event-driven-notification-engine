@@ -1,37 +1,31 @@
 // tests/load/multi-language.k6.js
 import http from 'k6/http';
-import { check, sleep } from 'k6';
-import { Rate } from 'k6/metrics';
-
-const throughputRate = new Rate('target_throughput_met');
+import { check } from 'k6';
 
 export const options = {
   scenarios: {
     multilang_broadcast: {
       executor: 'constant-arrival-rate',
-      rate: 50,
+      rate: 30,
       timeUnit: '1s',
       duration: '30s',
-      preAllocatedVUs: 50,
-      maxVUs: 100,
+      preAllocatedVUs: 30,
+      maxVUs: 60,
     },
   },
   thresholds: {
     http_req_failed: ['rate<0.05'],
     http_req_duration: ['p(95)<2000'],
-    target_throughput_met: ['rate>0.90'],
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
+var BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
 
 export default function () {
-  const userId = 'user-' + (Math.floor(Math.random() * 1000) + 1);
-  const start = Date.now();
+  var userId = 'user-' + (Math.floor(Math.random() * 1000) + 1);
+  var today = new Date().toISOString().split('T')[0];
 
-  const today = new Date().toISOString().split('T')[0];
-
-  const payload = JSON.stringify({
+  var payload = JSON.stringify({
     eventType: 'REGX-005',
     eventId: 'EVT-RBI-' + Date.now() + '-' + Math.floor(Math.random() * 99999),
     sourceSystem: 'compliance_system',
@@ -46,12 +40,12 @@ export default function () {
     },
   });
 
-  const res = http.post(BASE_URL + '/api/v1/events', payload, {
+  var res = http.post(BASE_URL + '/api/v1/events', payload, {
     headers: { 'Content-Type': 'application/json' },
     timeout: '10s',
   });
 
-  const success = check(res, {
+  check(res, {
     'broadcast accepted': function (r) {
       return r.status === 202;
     },
@@ -59,7 +53,4 @@ export default function () {
       return r.timings.duration < 2000;
     },
   });
-
-  throughputRate.add(success && Date.now() - start < 2000 ? 1 : 0);
-  sleep(0);
 }

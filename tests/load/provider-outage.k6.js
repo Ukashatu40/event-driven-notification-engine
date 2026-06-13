@@ -16,12 +16,12 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
+var BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
 
 export default function () {
-  const userId = 'user-' + (Math.floor(Math.random() * 1000) + 1);
+  var userId = 'user-' + (Math.floor(Math.random() * 1000) + 1);
 
-  const payload = JSON.stringify({
+  var payload = JSON.stringify({
     eventType: 'TXNX-001',
     eventId:
       'EVT-OUTAGE-' + Date.now() + '-' + Math.floor(Math.random() * 99999),
@@ -39,22 +39,22 @@ export default function () {
     },
   });
 
-  const res = http.post(BASE_URL + '/api/v1/events', payload, {
+  var res = http.post(BASE_URL + '/api/v1/events', payload, {
     headers: { 'Content-Type': 'application/json' },
   });
 
   check(res, {
-    'event accepted despite outage': function (r) {
+    'event accepted': function (r) {
       return r.status === 202;
     },
-    'response under 5 seconds': function (r) {
+    'under 5 seconds': function (r) {
       return r.timings.duration < 5000;
     },
   });
 
-  const healthRes = http.get(BASE_URL + '/health');
+  var healthRes = http.get(BASE_URL + '/health');
   check(healthRes, {
-    'health endpoint responsive': function (r) {
+    'health responsive': function (r) {
       return r.status === 200;
     },
   });
