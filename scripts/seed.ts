@@ -1,13 +1,18 @@
 // scripts/seed.ts
-import { config } from 'dotenv';
-import { resolve } from 'path';
-
-// Load .env from project root before anything else
-config({ path: resolve(process.cwd(), '.env') });
+// dotenv must be the very first thing — before any other import
+// Use require() to guarantee execution order
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+require('dotenv').config({
+  path: require('path').resolve(process.cwd(), '.env'),
+});
 
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
-const prisma = new PrismaClient();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter }); // Option mapping is required here
 
 const LANGUAGES = ['EN', 'HI', 'MR', 'TA', 'TE'] as const;
 const ACCOUNT_TYPES = ['BASIC', 'PREMIUM', 'HNI'] as const;
@@ -65,6 +70,10 @@ async function seedUsers(count: number): Promise<void> {
           },
         });
       }
+    }
+
+    if ((i + 1) % 100 === 0) {
+      console.log(`  ${i + 1}/${count} users seeded...`);
     }
   }
 
@@ -154,6 +163,10 @@ async function main(): Promise<void> {
   console.log(
     `DATABASE_URL: ${process.env.DATABASE_URL ? 'loaded ✓' : 'MISSING ✗'}`,
   );
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set. Check your .env file.');
+  }
 
   await seedTemplates();
   await seedProviderHealth();
