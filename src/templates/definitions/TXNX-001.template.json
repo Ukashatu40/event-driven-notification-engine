@@ -1,4 +1,3 @@
-// src/templates/definitions/TXNX-001.template.json
 {
   "templateId": "TXNX-001-v1",
   "eventType": "TXNX-001",
