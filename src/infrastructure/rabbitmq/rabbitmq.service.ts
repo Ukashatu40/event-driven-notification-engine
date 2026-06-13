@@ -18,7 +18,7 @@ export interface RabbitMQPublishOptions {
 @Injectable()
 export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMQService.name);
-  private connection: amqplib.ChannelModel | null = null;
+  private connection: amqplib.Connection | null = null;
   private channel: amqplib.Channel | null = null;
 
   constructor(private readonly configService: ConfigService) {}
@@ -40,8 +40,6 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // ── Connection ────────────────────────────────────────────────────
-
   private async connect(): Promise<void> {
     const url = this.configService.get<string>('rabbitmq.url') ?? '';
     this.connection = await amqplib.connect(url);
@@ -53,13 +51,11 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
 
     this.connection.on('close', () => {
       this.logger.warn('RabbitMQ connection closed — reconnecting in 5s');
-      setTimeout(() => this.connect(), 5_000);
+      setTimeout(() => void this.connect(), 5_000);
     });
 
     this.logger.log('RabbitMQ connected');
   }
-
-  // ── Topology setup (exchanges, queues, bindings) ──────────────────
 
   private async setupTopology(): Promise<void> {
     if (!this.channel) return;
@@ -68,42 +64,45 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<string>('rabbitmq.exchange') ?? 'notifications';
     const dlx =
       this.configService.get<string>('rabbitmq.dlx') ?? 'notifications.dlx';
+
     const queues =
       this.configService.get<
         Record<
           string,
-          {
-            name: string;
-            dlq: string;
-            priority: number;
-            prefetch: number;
-          }
+          { name: string; dlq: string; priority: number; prefetch: number }
         >
       >('rabbitmq.queues') ?? {};
 
-    // Main exchange — topic type for flexible routing by channel + priority
-    await this.channel.assertExchange(exchange, 'topic', { durable: true });
+    // 1. Assert main exchange
+    await this.channel.assertExchange(exchange, 'topic', {
+      durable: true,
+    });
 
-    // Dead letter exchange — fanout so all DLQ entries are visible
-    await this.channel.assertExchange(dlx, 'fanout', { durable: true });
+    // 2. Assert dead letter exchange
+    await this.channel.assertExchange(dlx, 'fanout', {
+      durable: true,
+    });
 
     for (const [, config] of Object.entries(queues)) {
-      // DLQ first (must exist before main queue references it)
-      await this.channel.assertQueue(config.dlq, { durable: true });
-      await this.channel.bindExchange(config.dlq, dlx, '');
+      // 3. Assert DLQ first — must exist before main queue references it
+      await this.channel.assertQueue(config.dlq, {
+        durable: true,
+      });
 
-      // Main queue with priority support and dead lettering
+      // 4. Bind DLQ to DLX so dead letters flow into it
+      await this.channel.bindQueue(config.dlq, dlx, '');
+
+      // 5. Assert main queue with dead letter config
       await this.channel.assertQueue(config.name, {
         durable: true,
         arguments: {
           'x-max-priority': config.priority,
           'x-dead-letter-exchange': dlx,
-          'x-dead-letter-routing-key': config.dlq,
         },
       });
 
-      // Routing key: notifications.<channel>
-      const channelName = config.name.split('.')[1];
+      // 6. Bind main queue to main exchange
+      const channelName = config.name.replace('notifications.', '');
       await this.channel.bindQueue(
         config.name,
         exchange,
@@ -113,8 +112,6 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Queue ready: ${config.name}`);
     }
   }
-
-  // ── Publisher ─────────────────────────────────────────────────────
 
   async publish(
     routingKey: string,
@@ -144,8 +141,6 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     this.channel.publish(exchange, routingKey, content, publishOptions);
   }
 
-  // ── Consumer ─────────────────────────────────────────────────────
-
   async consume(
     queueName: string,
     prefetch: number,
@@ -169,7 +164,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
         parsed = JSON.parse(msg.content.toString());
       } catch {
         this.logger.error(`Failed to parse RabbitMQ message from ${queueName}`);
-        this.channel?.nack(msg, false, false); // discard unparseable messages
+        this.channel?.nack(msg, false, false);
         return;
       }
 
