@@ -18,7 +18,7 @@ export interface RabbitMQPublishOptions {
 @Injectable()
 export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMQService.name);
-  private connection: amqplib.Connection | null = null;
+  private connection: amqplib.ChannelModel | null = null;
   private channel: amqplib.Channel | null = null;
 
   constructor(private readonly configService: ConfigService) {}
@@ -42,6 +42,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
 
   private async connect(): Promise<void> {
     const url = this.configService.get<string>('rabbitmq.url') ?? '';
+
     this.connection = await amqplib.connect(url);
     this.channel = await this.connection.createChannel();
 
@@ -69,7 +70,12 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<
         Record<
           string,
-          { name: string; dlq: string; priority: number; prefetch: number }
+          {
+            name: string;
+            dlq: string;
+            priority: number;
+            prefetch: number;
+          }
         >
       >('rabbitmq.queues') ?? {};
 
@@ -89,7 +95,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
         durable: true,
       });
 
-      // 4. Bind DLQ to DLX so dead letters flow into it
+      // 4. Bind DLQ to DLX
       await this.channel.bindQueue(config.dlq, dlx, '');
 
       // 5. Assert main queue with dead letter config
