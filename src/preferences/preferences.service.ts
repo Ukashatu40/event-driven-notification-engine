@@ -45,7 +45,7 @@ export class PreferencesService {
       if (!byCategory[key]) {
         byCategory[key] = { channels: {}, digestMode: pref.digestMode };
       }
-      byCategory[key]!.channels[pref.channel] = pref.enabled;
+      byCategory[key].channels[pref.channel] = pref.enabled;
     }
 
     // Build regulatory overrides section
@@ -90,8 +90,7 @@ export class PreferencesService {
 
     // Upsert preference for each channel
     const upsertOps = ALL_CHANNELS.map((channel) => {
-      const enabled =
-        dto.channels[channel as keyof typeof dto.channels] ?? true;
+      const enabled = dto.channels[channel] ?? true;
 
       return this.prisma.userPreference.upsert({
         where: {

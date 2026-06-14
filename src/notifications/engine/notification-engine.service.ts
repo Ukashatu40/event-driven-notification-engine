@@ -16,6 +16,7 @@ import { type Channel } from '../../shared/constants/channels';
 import { type SupportedLocale } from '../../shared/utils/currency.util';
 import { v4 as uuidv4 } from 'uuid';
 import { IngestEventDto } from '../dto/ingest-event.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class NotificationEngineService {
@@ -90,7 +91,7 @@ export class NotificationEngineService {
         status: NotificationStatus.CREATED,
         templateId: `${dto.eventType}-v1`,
         templateVersion: 1,
-        personalisationData: dto.payload,
+        personalisationData: dto.payload as Prisma.InputJsonValue,
         correlationId,
         idempotencyKey: dto.idempotencyKey,
         classification: this.classifyEvent(dto.eventType as EventType),
@@ -219,7 +220,7 @@ export class NotificationEngineService {
         where: { id: notificationId },
         data: {
           channel,
-          renderedContent: rendered as unknown as object,
+          renderedContent: rendered,
           status: NotificationStatus.QUEUED,
         },
       });

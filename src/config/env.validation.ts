@@ -1,5 +1,6 @@
 // src/config/env.validation.ts
-import Joi from 'joi';
+// import Joi from 'joi';
+import * as Joi from 'joi';
 
 export const envValidationSchema = Joi.object({
   // App

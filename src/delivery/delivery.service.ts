@@ -186,7 +186,7 @@ export class DeliveryService {
     });
 
     const attempts = (current?.deliveryAttempts ?? 0) + 1;
-    const priority = (current?.priority ?? Priority.MEDIUM) as Priority;
+    const priority = current?.priority ?? Priority.MEDIUM;
 
     await this.prisma.notification.update({
       where: { id: notification.notificationId },
@@ -231,7 +231,7 @@ export class DeliveryService {
     await this.prisma.deadLetterQueue.create({
       data: {
         notificationId: notification.notificationId,
-        originalEvent: notification as unknown as object,
+        originalEvent: notification,
         failureReason: result.errorMessage ?? 'Max retries exceeded',
         retryCount,
         lastError: result.errorCode,

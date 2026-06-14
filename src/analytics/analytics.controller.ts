@@ -91,7 +91,7 @@ export class AnalyticsController {
 
   private parsePeriod(period: string): number {
     const match = /^(\d+)d?$/.exec(period);
-    const days = match ? parseInt(match[1]!, 10) : 7;
+    const days = match ? parseInt(match[1], 10) : 7;
     return Math.min(Math.max(days, 1), 90); // clamp between 1 and 90 days
   }
 }

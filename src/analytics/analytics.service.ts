@@ -148,7 +148,7 @@ export class AnalyticsService {
     const byDate: Record<string, { optOuts: number; optIns: number }> = {};
 
     for (const record of records) {
-      const date = record.grantedAt.toISOString().split('T')[0]!;
+      const date = record.grantedAt.toISOString().split('T')[0];
       if (!byDate[date]) byDate[date] = { optOuts: 0, optIns: 0 };
 
       if (record.granted) {

@@ -6,6 +6,7 @@ import {
   isValidTransition,
 } from '../../shared/constants/notification-states';
 import { InvalidStateTransitionException } from '../../shared/exceptions/notification.exceptions';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class StateService {
@@ -45,7 +46,7 @@ export class StateService {
           fromStatus: from,
           toStatus: to,
           actor,
-          metadata: metadata ?? {},
+          metadata: (metadata ?? {}) as Prisma.InputJsonValue,
         },
       }),
     ]);

@@ -36,7 +36,9 @@ var SYMBOLS = ['RELIANCE', 'INFY', 'TCS', 'HDFC', 'ICICI'];
 
 // Load USER_IDS from environment variable or use fallback
 // Set with: k6 run -e USER_IDS="uuid1,uuid2,uuid3" market-crash.k6.js
-var USER_IDS_RAW = __ENV.USER_IDS || '';
+var USER_IDS_RAW =
+  __ENV.USER_IDS ||
+  '0f92ba3b-8f5b-424b-a101-cbbf5525cb31,8cb5468f-8c88-491e-b7bb-08b372073c63,36d89330-b487-4835-a231-197dc9834cae,23734af0-3353-4bf9-81dd-980f62db8d17,d63684c0-347e-4acd-a200-51448347bfd7,a4ed57c0-3660-4bbf-a4ce-6cc29e68fc8f,da99a4ec-8294-4e35-9b0a-9fbf07d9b169,f889e610-b739-457c-a454-b6d94ba5d6d4,443b0019-e51b-464a-b060-cb7158ac3838,43fc57a3-0aa0-4c65-b22b-e940d5e41704';
 var USER_IDS = USER_IDS_RAW.length > 0 ? USER_IDS_RAW.split(',') : [];
 
 function getSymbol() {

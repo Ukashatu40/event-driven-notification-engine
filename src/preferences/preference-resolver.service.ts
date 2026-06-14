@@ -125,7 +125,7 @@ export class PreferenceResolverService {
   ): Channel[] {
     // Premium and HNI users get WhatsApp added by default
     if (['PREMIUM', 'HNI'].includes(accountType)) {
-      return [...new Set([...channels, 'whatsapp' as Channel])];
+      return [...new Set([...channels, 'whatsapp'])];
     }
     return channels;
   }
@@ -163,7 +163,7 @@ export class PreferenceResolverService {
 
     // Apply user's enabled/disabled preferences on top of defaults
     return ALL_CHANNELS.filter((channel) => {
-      const userSetting = categoryPrefs![channel];
+      const userSetting = categoryPrefs[channel];
       // If user has no explicit setting, fall back to default
       if (userSetting === undefined) {
         return defaultChannels.includes(channel);
@@ -187,7 +187,7 @@ export class PreferenceResolverService {
           digestMode: pref.digestMode,
         };
       }
-      byCategory[key]!.channels[pref.channel] = pref.enabled;
+      byCategory[key].channels[pref.channel] = pref.enabled;
     }
 
     return { byCategory, resolvedAt: new Date().toISOString() };
