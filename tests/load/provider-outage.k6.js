@@ -17,9 +17,19 @@ export const options = {
 };
 
 var BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
+var USER_IDS_RAW = __ENV.USER_IDS || '';
+var USER_IDS = USER_IDS_RAW.length > 0 ? USER_IDS_RAW.split(',') : [];
+
+function getUserId() {
+  if (USER_IDS.length > 0) {
+    return USER_IDS[Math.floor(Math.random() * USER_IDS.length)];
+  }
+  var n = Math.floor(Math.random() * 1000) + 1;
+  return '00000000-0000-0000-0000-' + String(n).padStart(12, '0');
+}
 
 export default function () {
-  var userId = 'user-' + (Math.floor(Math.random() * 1000) + 1);
+  var userId = getUserId();
 
   var payload = JSON.stringify({
     eventType: 'TXNX-001',

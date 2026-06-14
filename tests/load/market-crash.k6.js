@@ -34,12 +34,24 @@ export const options = {
 var BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
 var SYMBOLS = ['RELIANCE', 'INFY', 'TCS', 'HDFC', 'ICICI'];
 
+// Load USER_IDS from environment variable or use fallback
+// Set with: k6 run -e USER_IDS="uuid1,uuid2,uuid3" market-crash.k6.js
+var USER_IDS_RAW = __ENV.USER_IDS || '';
+var USER_IDS = USER_IDS_RAW.length > 0 ? USER_IDS_RAW.split(',') : [];
+
 function getSymbol() {
   return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
 }
 
 function getUserId() {
-  return 'user-' + (Math.floor(Math.random() * 1000) + 1);
+  if (USER_IDS.length > 0) {
+    return USER_IDS[Math.floor(Math.random() * USER_IDS.length)];
+  }
+  // Fallback: generate a deterministic UUID-like string for testing
+  // Replace this with real UUIDs from: docker compose exec postgres psql ...
+  var n = Math.floor(Math.random() * 1000) + 1;
+  var padded = String(n).padStart(12, '0');
+  return '00000000-0000-0000-0000-' + padded;
 }
 
 export function runPriceAlert() {
@@ -83,7 +95,6 @@ export function runPriceAlert() {
 export function runMarginCall() {
   var userId = getUserId();
   var now = new Date();
-
   var deadline = new Date(now.getTime() + 3600000);
   var squareOff = new Date(now.getTime() + 7200000);
 
