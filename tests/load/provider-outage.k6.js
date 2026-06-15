@@ -64,7 +64,8 @@ export default function () {
     },
   });
 
-  var healthRes = http.get(BASE_URL + '/health');
+  // Fixed: health endpoint is at /api/health not /health
+  var healthRes = http.get(BASE_URL + '/api/health');
   check(healthRes, {
     'health responsive': function (r) {
       return r.status === 200;
