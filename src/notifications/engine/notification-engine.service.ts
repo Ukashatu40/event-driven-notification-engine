@@ -220,7 +220,7 @@ export class NotificationEngineService {
         where: { id: notificationId },
         data: {
           channel,
-          renderedContent: rendered,
+          renderedContent: rendered as unknown as Prisma.InputJsonValue,
           status: NotificationStatus.QUEUED,
         },
       });

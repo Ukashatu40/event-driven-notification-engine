@@ -17,6 +17,7 @@ import {
 } from './providers/delivery-provider.interface';
 import { NotificationStatus } from '../shared/constants/notification-states';
 import { Priority } from '../shared/constants/priorities';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class DeliveryService {
@@ -231,7 +232,7 @@ export class DeliveryService {
     await this.prisma.deadLetterQueue.create({
       data: {
         notificationId: notification.notificationId,
-        originalEvent: notification,
+        originalEvent: notification as unknown as Prisma.InputJsonValue,
         failureReason: result.errorMessage ?? 'Max retries exceeded',
         retryCount,
         lastError: result.errorCode,

@@ -125,7 +125,7 @@ export class PreferenceResolverService {
   ): Channel[] {
     // Premium and HNI users get WhatsApp added by default
     if (['PREMIUM', 'HNI'].includes(accountType)) {
-      return [...new Set([...channels, 'whatsapp'])];
+      return [...new Set([...channels, 'whatsapp'])] as Channel[];
     }
     return channels;
   }
