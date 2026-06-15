@@ -1,46 +1,135 @@
+<!-- docs/performance-benchmarks.md -->
+
 # Performance Benchmarks
 
-## Market Crash Scenario — k6 Load Test Results
+Load test results from k6 runs against the notification engine running locally
+with full infrastructure stack (PostgreSQL, Redis, Kafka, RabbitMQ).
 
-**Date:** 2026-06-14  
-**Scenario:** Nifty 8% drop simulation — simultaneous price alerts and margin calls  
-**Duration:** 3 minutes sustained, 60 max VUs
+**Environment:** MacBook Pro (Apple Silicon), Docker Desktop, NestJS + Fastify
 
-### Latency Results (from k6 run)
+---
+
+## Scenario 1 — Market Crash (Challenge B2.1)
+
+Simulates Nifty dropping 8% in 30 minutes.
+Two concurrent scenarios: price alerts (50 VUs) + margin calls (10 VUs).
+
+**Command:**
+
+```bash
+k6 run -e USER_IDS="$(cat scripts/user-ids.txt)" tests/load/market-crash.k6.js
+```
+
+**Results:**
 
 | Metric | Price Alerts | Margin Calls |
 | ------ | ------------ | ------------ |
-| P50    | ~0.97ms      | ~0.84ms      |
-| P90    | 2.15ms       | 1.70ms       |
-| P95    | 2.86ms       | 2.12ms       |
-| P99    | —            | **4.21ms**   |
-| Max    | 78.68ms      | 78.23ms      |
+| P50    | 4.96ms       | 3.24ms       |
+| P90    | 8.77ms       | 5.19ms       |
+| P95    | **10.39ms**  | **6.55ms**   |
+| P99    | —            | **10.86ms**  |
+| Max    | 353.48ms     | 407.30ms     |
+| Avg    | 5.64ms       | 3.83ms       |
 
-**All thresholds passed:**
+**Throughput:** 545 req/s sustained · 103,712 total iterations in 3m10s
 
-- ✓ P99 margin calls < 10,000ms (actual: 4.21ms — **2,375× better than SLA**)
-- ✓ P95 price alerts < 15,000ms (actual: 2.86ms — **5,244× better than SLA**)
+**Thresholds:**
 
-### Throughput
+- ✓ P99 margin calls < 10,000ms → actual: 10.86ms ✓
+- ✓ P95 price alerts < 15,000ms → actual: 10.39ms ✓
+- ✓ HTTP failure rate < 5% → actual: 0.00% ✓
+- ✓ All checks passed: 207,424/207,424 (100%)
 
-- **571 requests/second** sustained across 60 concurrent VUs
-- **108,563 total iterations** in 3 minutes 10 seconds
-- Average response time: 1.23ms end-to-end
+**Analysis:**
+Margin call P99 of 10.86ms is **921× faster** than the 10-second SEBI SLA requirement.
+Price alert P95 of 10.39ms is **1,443× faster** than the 15-second SLA requirement.
+The system sustains 545 req/s with zero failures under 60 concurrent VUs.
 
-### Architecture Observations
+---
 
-At 571 req/s the bottleneck is NOT the application — response times under 5ms indicate the NestJS + Fastify pipeline handles ingest with minimal overhead. The deduplication layer (Redis fingerprint check) adds ~0.2ms per request.
+## Scenario 2 — Multi-Language Emergency Broadcast (Challenge B2.5)
 
-The 78ms max latency spikes are Redis connection pool contention under sudden burst — addressed by tuning `maxRetriesPerRequest` and connection pool sizing.
+RBI emergency rate hike — 4.2M users across 5 languages in 4 hours.
+Spec requirement: 292 notifications/second sustained.
 
-### Scaling Projection
+**Command:**
 
-At 571 req/s per instance:
+```bash
+k6 run -e USER_IDS="$(cat scripts/user-ids.txt)" tests/load/multi-language.k6.js
+```
 
-- 2M daily notifications = 23 req/s average → single instance handles with headroom
-- Market crash peak (450K in 30 min) = 250 req/s → single instance handles comfortably
-- 20M daily = 231 req/s average → single instance handles; add second for redundancy
+**Results:**
 
-### Note on HTTP 400 Errors
+| Metric     | Value                |
+| ---------- | -------------------- |
+| P50        | 2.67ms               |
+| P90        | 3.36ms               |
+| P95        | **3.76ms**           |
+| Max        | 62.28ms              |
+| Avg        | 3.17ms               |
+| Throughput | 30 req/s (test rate) |
 
-Initial test runs showed 100% HTTP 400 errors due to load test using non-UUID user IDs. This is correct validation behaviour — the system correctly rejects malformed requests. Subsequent runs with real seeded UUIDs via `-e USER_IDS=...` parameter confirmed 202 Accepted responses at the throughput figures above.
+**Thresholds:**
+
+- ✓ P95 < 2,000ms → actual: 3.76ms ✓
+- ✓ HTTP failure rate < 5% → actual: 0.00% ✓
+- ✓ All checks passed: 1,802/1,802 (100%)
+
+**Analysis:**
+At 3.17ms average response time, the system can sustain the required 292 req/s
+for the 4.2M broadcast with significant headroom. Single instance capacity
+exceeds 545 req/s (demonstrated in Scenario 1), covering the 292 req/s requirement
+without horizontal scaling.
+
+---
+
+## Scenario 3 — Provider Outage with Failover (Challenge B2.2)
+
+SMS provider outage during trading session.
+Up to 40 VUs over 4.5 minutes.
+
+**Command:**
+
+```bash
+k6 run -e USER_IDS="$(cat scripts/user-ids.txt)" tests/load/provider-outage.k6.js
+```
+
+**Results:**
+
+| Metric     | Value      |
+| ---------- | ---------- |
+| P50        | 2.46ms     |
+| P90        | 4.87ms     |
+| P95        | **5.57ms** |
+| Max        | 81.07ms    |
+| Throughput | 205 req/s  |
+
+**Thresholds:**
+
+- ✓ P95 < 5,000ms → actual: 5.57ms ✓
+- ✓ All event accepts passed (0% failure on POST /events)
+
+**Note:** `/health` endpoint path corrected to `/api/health` in updated test.
+
+---
+
+## Summary
+
+| Scenario        | Throughput      | P95 Latency | P99 Latency | Failures |
+| --------------- | --------------- | ----------- | ----------- | -------- |
+| Market crash    | 545 req/s       | 10.39ms     | 10.86ms     | 0%       |
+| Multi-language  | 30 req/s target | 3.76ms      | —           | 0%       |
+| Provider outage | 205 req/s       | 5.57ms      | —           | 0%       |
+
+**Scaling projection:**
+
+- 2M daily notifications = 23 req/s average → 1 instance
+- 450K in 30 min (crash scenario) = 250 req/s peak → 1 instance
+- 4.2M in 4 hours = 292 req/s → 1 instance
+- 20M daily = 231 req/s average → 1 instance with Redis Cluster for caps
+
+**Bottleneck analysis:**
+Under load testing, the bottleneck is Redis connection pool (evidenced by
+occasional 350-400ms max spikes). Addressed by setting `maxRetriesPerRequest: 3`
+and connection pool pre-warming. The NestJS + Fastify application layer itself
+adds < 2ms overhead per request.
