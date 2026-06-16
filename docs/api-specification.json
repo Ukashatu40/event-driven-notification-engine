@@ -1,0 +1,412 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "HealthController_health",
+        "summary": "Full system health check",
+        "description": "Returns health status of all components: database, Redis, Kafka, RabbitMQ",
+        "parameters": [],
+        "responses": {
+          "200": { "description": "System is healthy" },
+          "503": { "description": "One or more components are down" }
+        },
+        "tags": ["health"]
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "operationId": "HealthController_ready",
+        "summary": "Readiness probe",
+        "description": "Used by container orchestrators. Returns 200 when ready to serve traffic.",
+        "parameters": [],
+        "responses": {
+          "200": { "description": "Ready" },
+          "503": { "description": "Not ready" }
+        },
+        "tags": ["health"]
+      }
+    },
+    "/api/live": {
+      "get": {
+        "operationId": "HealthController_alive",
+        "summary": "Liveness probe",
+        "description": "Used by container orchestrators. Returns 200 as long as process is alive.",
+        "parameters": [],
+        "responses": { "200": { "description": "Alive" } },
+        "tags": ["health"]
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "operationId": "HealthController_metrics",
+        "summary": "Prometheus metrics",
+        "description": "Exposes all application metrics in Prometheus text format. Scraped by Prometheus server.",
+        "parameters": [],
+        "responses": { "200": { "description": "Prometheus metrics text" } },
+        "tags": ["health"]
+      }
+    },
+    "/api/v1/users/{userId}/preferences": {
+      "get": {
+        "operationId": "PreferencesController_getPreferences",
+        "summary": "Get user notification preferences",
+        "description": "Returns the full preference hierarchy including regulatory overrides that cannot be disabled by the user.",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Preferences retrieved" },
+          "404": { "description": "User not found" }
+        },
+        "tags": ["preferences"],
+        "security": [{ "JWT": [] }]
+      },
+      "put": {
+        "operationId": "PreferencesController_updatePreferences",
+        "summary": "Update user notification preferences",
+        "description": "Updates channel and digest preferences for a given event category. Returns warnings if regulatory-mandatory channels are disabled.",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdatePreferenceDto" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Preferences updated" },
+          "404": { "description": "User not found" },
+          "422": { "description": "Validation failed" }
+        },
+        "tags": ["preferences"],
+        "security": [{ "JWT": [] }]
+      }
+    },
+    "/api/v1/notifications/{notificationId}": {
+      "get": {
+        "operationId": "NotificationsController_getNotification",
+        "summary": "Get notification status and full state history",
+        "parameters": [
+          {
+            "name": "notificationId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Notification details" },
+          "404": { "description": "Not found" }
+        },
+        "tags": ["notifications"],
+        "security": [{ "JWT": [] }]
+      }
+    },
+    "/api/v1/users/{userId}/notifications": {
+      "get": {
+        "operationId": "NotificationsController_getUserNotifications",
+        "summary": "Get paginated notifications for a user",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": { "minimum": 1, "default": 1, "type": "number" }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": { "200": { "description": "" } },
+        "tags": ["notifications"],
+        "security": [{ "JWT": [] }]
+      }
+    },
+    "/api/v1/dlq": {
+      "get": {
+        "operationId": "NotificationsController_getDlq",
+        "summary": "List unresolved dead letter queue entries",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": { "minimum": 1, "default": 1, "type": "number" }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": { "200": { "description": "" } },
+        "tags": ["notifications"],
+        "security": [{ "JWT": [] }]
+      }
+    },
+    "/api/v1/dlq/{dlqId}/resolve": {
+      "patch": {
+        "operationId": "NotificationsController_resolveDlq",
+        "summary": "Resolve a DLQ entry — retry or discard",
+        "parameters": [
+          {
+            "name": "dlqId",
+            "required": true,
+            "in": "path",
+            "schema": { "format": "uuid", "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "" } },
+        "tags": ["notifications"],
+        "security": [{ "JWT": [] }]
+      }
+    },
+    "/api/v1/analytics/delivery-rates": {
+      "get": {
+        "operationId": "AnalyticsController_getDeliveryRates",
+        "summary": "Get delivery rates by channel and priority",
+        "description": "Returns delivery metrics for the specified period. Includes per-channel rates, P99 latencies, cost summary, DND blocks, and frequency cap hits.",
+        "parameters": [
+          {
+            "name": "period",
+            "required": false,
+            "in": "query",
+            "description": "Period in days (default: 7)",
+            "schema": { "example": "7d", "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Delivery rate report" } },
+        "tags": ["analytics"],
+        "security": [{ "JWT": [] }]
+      }
+    },
+    "/api/v1/analytics/channel-performance": {
+      "get": {
+        "operationId": "AnalyticsController_getChannelPerformance",
+        "summary": "Get per-channel and per-provider performance metrics",
+        "parameters": [
+          {
+            "name": "period",
+            "required": false,
+            "in": "query",
+            "schema": { "example": "7d", "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Channel performance report" } },
+        "tags": ["analytics"],
+        "security": [{ "JWT": [] }]
+      }
+    },
+    "/api/v1/analytics/opt-out-trends": {
+      "get": {
+        "operationId": "AnalyticsController_getOptOutTrends",
+        "summary": "Get opt-out and opt-in trends",
+        "description": "Rolling opt-out rate. Target: reduce from 23% to < 8% within 90 days.",
+        "parameters": [
+          {
+            "name": "period",
+            "required": false,
+            "in": "query",
+            "schema": { "example": "30d", "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Opt-out trend data" } },
+        "tags": ["analytics"],
+        "security": [{ "JWT": [] }]
+      }
+    },
+    "/api/v1/analytics/realtime": {
+      "get": {
+        "operationId": "AnalyticsController_getRealtimeStats",
+        "summary": "Get real-time notification counters",
+        "description": "Returns live counters with < 30 second lag. Sourced from Redis sliding window counters.",
+        "parameters": [],
+        "responses": { "200": { "description": "Real-time stats" } },
+        "tags": ["analytics"],
+        "security": [{ "JWT": [] }]
+      }
+    },
+    "/api/v1/events": {
+      "post": {
+        "operationId": "EventsController_ingestEvent",
+        "summary": "Ingest a financial event for notification processing",
+        "description": "Primary entry point for all event producers — trading engine, risk engine, market data feed, compliance system. Returns 202 Accepted immediately. Processing is fully asynchronous. Supply an idempotency key to prevent duplicate processing.",
+        "parameters": [
+          {
+            "name": "x-correlation-id",
+            "required": false,
+            "in": "header",
+            "description": "Optional correlation ID for distributed tracing",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/IngestEventDto" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Event accepted for processing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "notificationId": "ntf_98765432-abcd-1234-ef56-789012345678",
+                    "eventId": "EVT-2025-03-19-MC-847291",
+                    "status": "CREATED",
+                    "estimatedDeliveryMs": 3000,
+                    "createdAt": "2025-03-19T10:15:23.512Z"
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "User not found" },
+          "409": {
+            "description": "Duplicate event — idempotency key already processed"
+          },
+          "422": { "description": "Validation failed" }
+        },
+        "tags": ["events"],
+        "security": [{ "JWT": [] }]
+      }
+    }
+  },
+  "info": {
+    "title": "WealthBridge Notification Engine",
+    "description": "Event-driven notification system for financial services — 25+ event types, 5 delivery channels, TRAI DND compliance",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [
+    { "name": "events", "description": "Financial event ingestion" },
+    {
+      "name": "notifications",
+      "description": "Notification lifecycle management"
+    },
+    { "name": "preferences", "description": "User notification preferences" },
+    { "name": "analytics", "description": "Delivery metrics and reporting" },
+    { "name": "compliance", "description": "DND and regulatory audit" },
+    { "name": "health", "description": "System health and readiness" }
+  ],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "JWT": { "scheme": "bearer", "bearerFormat": "JWT", "type": "http" }
+    },
+    "schemas": {
+      "ChannelPreferencesDto": {
+        "type": "object",
+        "properties": {
+          "sms": { "type": "boolean" },
+          "email": { "type": "boolean" },
+          "push": { "type": "boolean" },
+          "whatsapp": { "type": "boolean" },
+          "in_app": { "type": "boolean" }
+        }
+      },
+      "UpdatePreferenceDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "example": "TXNX",
+            "description": "Event category code e.g. TXNX, RISK, SIPX, MKTX, REGX"
+          },
+          "eventType": { "type": "string" },
+          "channels": { "$ref": "#/components/schemas/ChannelPreferencesDto" },
+          "digestMode": {
+            "type": "string",
+            "enum": ["IMMEDIATE", "HOURLY", "DAILY"]
+          },
+          "quietHoursStart": { "type": "string", "example": "22:00" },
+          "quietHoursEnd": { "type": "string", "example": "07:30" }
+        },
+        "required": ["category", "channels"]
+      },
+      "IngestEventDto": {
+        "type": "object",
+        "properties": {
+          "eventType": { "type": "string", "example": "RISK-001" },
+          "eventId": {
+            "type": "string",
+            "example": "EVT-2025-03-19-MC-847291"
+          },
+          "sourceSystem": { "type": "string", "example": "margin_engine" },
+          "timestamp": {
+            "type": "string",
+            "example": "2025-03-19T10:15:23.456Z"
+          },
+          "priority": {
+            "type": "number",
+            "example": 1,
+            "minimum": 1,
+            "maximum": 5
+          },
+          "userId": {
+            "type": "string",
+            "example": "usr_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "payload": {
+            "type": "object",
+            "example": {
+              "shortfall_amount": 125000,
+              "deadline": "2025-03-19T11:30:00Z"
+            }
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "example": "margin-call-usr_a1b2c3d4-2025-03-19T10:15"
+          }
+        },
+        "required": [
+          "eventType",
+          "eventId",
+          "sourceSystem",
+          "timestamp",
+          "priority",
+          "userId",
+          "payload"
+        ]
+      }
+    }
+  }
+}
