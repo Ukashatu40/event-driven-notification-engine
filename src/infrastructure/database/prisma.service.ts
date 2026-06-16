@@ -34,7 +34,6 @@ export class PrismaService
   async onModuleInit(): Promise<void> {
     // Log slow queries in development
     if (process.env.NODE_ENV === 'development') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (this as any).$on('query', (e: any) => {
         if (e.duration > 100) {
           this.logger.warn(`Slow query (${e.duration}ms): ${e.query}`);
@@ -56,7 +55,6 @@ export class PrismaService
     model: string,
     where: Record<string, unknown>,
   ): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (this as any)[model].update({
       where,
       data: { deletedAt: new Date() },
