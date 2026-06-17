@@ -11,6 +11,7 @@ import { PreferencesModule } from '../preferences/preferences.module';
 import { TemplatesModule } from '../templates/templates.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { SendTimeOptimizationService } from './engine/send-time-optimization.service';
+import { DashboardModule } from 'src/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { SendTimeOptimizationService } from './engine/send-time-optimization.ser
     PreferencesModule,
     TemplatesModule,
     DeliveryModule,
+    DashboardModule,
   ],
   controllers: [NotificationsController],
   providers: [

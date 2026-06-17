@@ -7,12 +7,16 @@ import {
 } from '../../shared/constants/notification-states';
 import { InvalidStateTransitionException } from '../../shared/exceptions/notification.exceptions';
 import { Prisma } from '@prisma/client';
+import { DashboardGateway } from './../../dashboard/dashboard.gateway';
 
 @Injectable()
 export class StateService {
   private readonly logger = new Logger(StateService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly dashboardGateway: DashboardGateway,
+  ) {}
 
   async transition(
     notificationId: string,
@@ -22,7 +26,7 @@ export class StateService {
   ): Promise<void> {
     const notification = await this.prisma.notification.findUnique({
       where: { id: notificationId },
-      select: { status: true },
+      select: { status: true, userId: true, eventType: true, channel: true },
     });
 
     if (!notification) {
@@ -50,6 +54,16 @@ export class StateService {
         },
       }),
     ]);
+
+    this.dashboardGateway.broadcastStateChange({
+      notificationId,
+      userId: notification.userId,
+      eventType: notification.eventType,
+      channel: notification.channel,
+      fromStatus: from,
+      toStatus: to,
+      timestamp: new Date().toISOString(),
+    });
 
     this.logger.debug(
       `Notification ${notificationId}: ${from} → ${to} (actor: ${actor})`,
