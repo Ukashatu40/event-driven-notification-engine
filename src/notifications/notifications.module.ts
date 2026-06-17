@@ -10,6 +10,7 @@ import { ComplianceModule } from '../compliance/compliance.module';
 import { PreferencesModule } from '../preferences/preferences.module';
 import { TemplatesModule } from '../templates/templates.module';
 import { DeliveryModule } from '../delivery/delivery.module';
+import { SendTimeOptimizationService } from './engine/send-time-optimization.service';
 
 @Module({
   imports: [
@@ -25,7 +26,13 @@ import { DeliveryModule } from '../delivery/delivery.module';
     DeduplicationService,
     StateService,
     RoutingEngineService,
+    SendTimeOptimizationService,
   ],
-  exports: [NotificationsService, NotificationEngineService, StateService],
+  exports: [
+    NotificationsService,
+    NotificationEngineService,
+    StateService,
+    SendTimeOptimizationService,
+  ],
 })
 export class NotificationsModule {}

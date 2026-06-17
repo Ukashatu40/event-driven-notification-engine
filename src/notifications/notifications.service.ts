@@ -1,16 +1,19 @@
 // src/notifications/notifications.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../infrastructure/database/prisma.service';
 import { StateService } from './state-machine/state.service';
 import { PaginationDto, paginate } from '../shared/dto/pagination.dto';
 // import { type Prisma } from '@prisma/client';
 // import { NotificationStateLog } from '@prisma/client';
+import { SendTimeOptimizationService } from './engine/send-time-optimization.service'; // Adjust import path as needed
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly stateService: StateService,
+    private readonly sendTimeOptimization: SendTimeOptimizationService,
   ) {}
 
   async findById(notificationId: string): Promise<object> {
@@ -83,6 +86,52 @@ export class NotificationsService {
     ]);
 
     return paginate(data, total, pagination);
+  }
+
+  async markAsRead(notificationId: string, userId: string): Promise<void> {
+    const notification = await this.prisma.notification.findUnique({
+      where: { id: notificationId },
+    });
+
+    if (!notification) {
+      throw new NotFoundException(`Notification ${notificationId} not found`);
+    }
+
+    // Security check: Ensure the requesting user owns this notification
+    if (notification.userId !== userId) {
+      throw new NotFoundException(`Notification ${notificationId} not found`);
+    }
+
+    // Update state database fields
+    await this.prisma.notification.update({
+      where: { id: notificationId },
+      data: {
+        status: 'READ' as any, // Adjust or cast to your exact NotificationStatus enum if needed
+        // readAt: new Date() // Uncomment if your schema includes a readAt timestamp
+      },
+    });
+
+    // Execute engine state transition log entry
+    await this.stateService.transition(
+      notificationId,
+      'READ' as never,
+      'user_interaction',
+      { readBy: userId },
+    );
+
+    // ── STO Telemetry Capture Pipeline ───────────────────────────
+    try {
+      await this.sendTimeOptimization.recordEngagement(
+        notification.userId,
+        new Date(),
+      );
+    } catch (error) {
+      // Non-blocking catch protects primary user action if telemetry datastore fails
+      this.logger.error(
+        `Failed to record engagement tracking for user ${notification.userId}`,
+        error instanceof Error ? error.stack : error,
+      );
+    }
   }
 
   async getDlqEntries(pagination: PaginationDto): Promise<object> {

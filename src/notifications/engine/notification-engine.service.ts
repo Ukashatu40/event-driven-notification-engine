@@ -17,9 +17,13 @@ import { type SupportedLocale } from '../../shared/utils/currency.util';
 import { v4 as uuidv4 } from 'uuid';
 import { IngestEventDto } from '../dto/ingest-event.dto';
 import { Prisma } from '@prisma/client';
+import { AbTestingService } from '../../templates/engine/ab-testing.service';
+import { SendTimeOptimizationService } from './send-time-optimization.service';
+import { REDIS_KEYS } from '../../shared/constants/redis-keys';
 
 @Injectable()
 export class NotificationEngineService {
+  [x: string]: any;
   private readonly logger = new Logger(NotificationEngineService.name);
 
   constructor(
@@ -33,6 +37,8 @@ export class NotificationEngineService {
     private readonly templateEngine: TemplateEngineService,
     private readonly frequencyCap: FrequencyCapService,
     private readonly quietHours: QuietHoursService,
+    private readonly abTesting: AbTestingService,
+    private readonly sendTimeOptimization: SendTimeOptimizationService,
   ) {}
 
   async process(dto: IngestEventDto, correlationId: string): Promise<string> {
@@ -160,6 +166,41 @@ export class NotificationEngineService {
       return notificationId;
     }
 
+    // ── Send-Time Optimization (STO) Interceptor ──────────────────
+
+    const stoDecision = await this.sendTimeOptimization.decide(
+      user.id,
+      dto.eventType as EventType,
+      dto.priority,
+      user.timezone,
+    );
+
+    if (stoDecision.optimize && stoDecision.delayMs) {
+      const scheduledTime = Date.now() + stoDecision.delayMs;
+
+      await this.redis.zadd(
+        REDIS_KEYS.retryQueue(dto.priority),
+        scheduledTime,
+        notificationId,
+      );
+
+      await this.stateService.transition(
+        notificationId,
+        NotificationStatus.QUEUED,
+        'send-time-optimizer',
+        {
+          scheduledFor: new Date(scheduledTime).toISOString(),
+          reason: stoDecision.reason,
+        },
+      );
+
+      this.logger.log(
+        `Notification ${notificationId} delayed ${Math.round(stoDecision.delayMs / 60000)}min for send-time optimization`,
+      );
+
+      return notificationId; // Return safely without executing step 5
+    }
+
     await this.stateService.transition(
       notificationId,
       NotificationStatus.ROUTED,
@@ -204,7 +245,8 @@ export class NotificationEngineService {
     locale: SupportedLocale,
     correlationId: string,
   ): Promise<void> {
-    const templateId = `${dto.eventType}-v1`;
+    const variant = await this.abTesting.resolveVariant(user.id, dto.eventType);
+    const templateId = variant.templateId;
 
     try {
       const rendered = await this.templateEngine.render(templateId, channel, {
@@ -265,6 +307,13 @@ export class NotificationEngineService {
         `Failed to render/queue ${notificationId} for ${channel}: ${(err as Error).message}`,
       );
     }
+
+    await this.abTesting.recordExposure(
+      user.id,
+      dto.eventType,
+      templateId,
+      notificationId,
+    );
   }
 
   private resolveRecipient(
