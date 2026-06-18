@@ -149,8 +149,8 @@ describe('AbTestingService', () => {
 
       const result = await service.getVariantPerformance('RISK-001');
 
-      expect(result[0]!.deliveryRate).toBe(0);
-      expect(result[0]!.readRate).toBe(0);
+      expect(result[0].deliveryRate).toBe(0);
+      expect(result[0].readRate).toBe(0);
     });
   });
 });

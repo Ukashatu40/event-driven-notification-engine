@@ -351,6 +351,19 @@ export class TemplateEngineService implements OnModuleInit {
             body: 'MARGIN CALL: Shortfall {{shortfall_amount}}. Deadline: {{deadline}}. Add funds or positions squared off at {{auto_square_off_time}}. -{{app_name}}',
             senderId: 'WLTHBR',
           },
+          whatsapp: {
+            templateName: 'margin_call_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{shortfall_amount}}',
+                  '{{deadline}}',
+                  '{{auto_square_off_time}}',
+                ],
+              },
+            ],
+          },
           push: {
             title: '⚠️ Margin Call Warning',
             body: 'Shortfall of {{shortfall_amount}}. Deadline {{deadline}}.',
@@ -408,6 +421,20 @@ export class TemplateEngineService implements OnModuleInit {
             body: '{{stock_name}} BUY: {{qty}} shares @ {{price}}. Total: {{total}}. -{{app_name}}',
             senderId: 'WLTHBR',
           },
+          whatsapp: {
+            templateName: 'buy_order_executed_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{stock_name}}',
+                  '{{qty}}',
+                  '{{price}}',
+                  '{{total}}',
+                ],
+              },
+            ],
+          },
           push: {
             title: 'Buy Order Executed',
             body: '{{qty}} {{stock_name}} @ {{price}}',
@@ -444,6 +471,20 @@ export class TemplateEngineService implements OnModuleInit {
             body: '{{stock_name}} SELL: {{qty}} shares @ {{price}}. P&L: {{pnl}}. -{{app_name}}',
             senderId: 'WLTHBR',
           },
+          whatsapp: {
+            templateName: 'sell_order_executed_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{stock_name}}',
+                  '{{qty}}',
+                  '{{price}}',
+                  '{{pnl}}',
+                ],
+              },
+            ],
+          },
           push: {
             title: 'Sell Order Executed',
             body: '{{qty}} {{stock_name}} @ {{price}} | P&L: {{pnl}}',
@@ -471,6 +512,15 @@ export class TemplateEngineService implements OnModuleInit {
           sms: {
             body: 'Order REJECTED: {{stock_name}} — {{reason}}. -{{app_name}}',
           },
+          whatsapp: {
+            templateName: 'order_rejected_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{stock_name}}', '{{reason}}'],
+              },
+            ],
+          },
           push: {
             title: 'Order Rejected',
             body: '{{stock_name}} order rejected: {{reason}}',
@@ -492,6 +542,18 @@ export class TemplateEngineService implements OnModuleInit {
         channels: {
           sms: {
             body: 'URGENT: Margin shortfall {{shortfall_amount}}. Auto square-off at {{auto_square_off_time}}. Add funds NOW. -{{app_name}}',
+          },
+          whatsapp: {
+            templateName: 'margin_shortfall_urgent_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{shortfall_amount}}',
+                  '{{auto_square_off_time}}',
+                ],
+              },
+            ],
           },
           push: {
             title: '🚨 Margin Shortfall',
@@ -528,6 +590,20 @@ export class TemplateEngineService implements OnModuleInit {
           sms: {
             body: 'Price Alert: {{stock_name}} {{direction}} {{current_price}} (target: {{target_price}}). -{{app_name}}',
           },
+          whatsapp: {
+            templateName: 'price_alert_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{stock_name}}',
+                  '{{direction}}',
+                  '{{current_price}}',
+                  '{{target_price}}',
+                ],
+              },
+            ],
+          },
           push: {
             title: '📈 Price Alert: {{stock_name}}',
             body: '{{stock_name}} hit {{current_price}} | Target: {{target_price}}',
@@ -549,6 +625,19 @@ export class TemplateEngineService implements OnModuleInit {
         channels: {
           sms: {
             body: 'Circuit Breaker: {{stock_name}} trading halted. Level {{circuit_level}}. Resumes: {{resume_time}}. -{{app_name}}',
+          },
+          whatsapp: {
+            templateName: 'circuit_breaker_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{stock_name}}',
+                  '{{circuit_level}}',
+                  '{{resume_time}}',
+                ],
+              },
+            ],
           },
           push: {
             title: '⛔ Circuit Breaker: {{stock_name}}',
@@ -599,6 +688,20 @@ export class TemplateEngineService implements OnModuleInit {
           sms: {
             body: 'SIP Executed: {{fund_name}} {{amount}}. Units: {{units_allotted}} @ NAV {{nav}}. -{{app_name}}',
           },
+          whatsapp: {
+            templateName: 'sip_executed_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{fund_name}}',
+                  '{{amount}}',
+                  '{{units_allotted}}',
+                  '{{nav}}',
+                ],
+              },
+            ],
+          },
           email: {
             subject: 'SIP Executed: {{fund_name}}',
             textBody:
@@ -620,6 +723,15 @@ export class TemplateEngineService implements OnModuleInit {
         channels: {
           sms: {
             body: 'KYC expires {{expiry_date}}. Complete renewal to avoid account restrictions. -{{app_name}}',
+          },
+          whatsapp: {
+            templateName: 'kyc_expiry_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{expiry_date}}', '{{documents_needed}}'],
+              },
+            ],
           },
           email: {
             subject: 'Action Required: KYC Expiry on {{expiry_date}}',
@@ -652,6 +764,15 @@ export class TemplateEngineService implements OnModuleInit {
             textBody:
               'Dear {{user_name}}, there has been a regulatory change: {{change_summary}}. ' +
               'Impact on your account: {{impact}}. Effective date: {{effective_date}}.',
+          },
+          whatsapp: {
+            templateName: 'regulatory_update_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{change_summary}}', '{{effective_date}}'],
+              },
+            ],
           },
           in_app: {
             title: 'Regulatory Update',
