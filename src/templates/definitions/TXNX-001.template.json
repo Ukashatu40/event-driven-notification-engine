@@ -1,3 +1,4 @@
+// src/templates/definitions/TXNX-001.template.json
 {
   "templateId": "TXNX-001-v1",
   "eventType": "TXNX-001",
@@ -6,6 +7,15 @@
     "sms": {
       "body": "{{stock_name}} BUY: {{qty}} shares @ {{price}}. Total: {{total}}. -{{app_name}}",
       "senderId": "WLTHBR"
+    },
+    "whatsapp": {
+      "templateName": "buy_order_executed_v1",
+      "components": [
+        {
+          "type": "body",
+          "parameters": ["{{stock_name}}", "{{qty}}", "{{price}}", "{{total}}"]
+        }
+      ]
     },
     "push": {
       "title": "Buy Order Executed",

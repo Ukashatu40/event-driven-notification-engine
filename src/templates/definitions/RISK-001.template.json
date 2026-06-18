@@ -1,3 +1,4 @@
+// src/templates/definitions/RISK-001.template.json
 {
   "templateId": "RISK-001-v1",
   "eventType": "RISK-001",
@@ -6,6 +7,19 @@
     "sms": {
       "body": "MARGIN CALL: Shortfall {{shortfall_amount}}. Deadline: {{deadline}}. Add funds or positions squared off at {{auto_square_off_time}}. -{{app_name}}",
       "senderId": "WLTHBR"
+    },
+    "whatsapp": {
+      "templateName": "margin_call_v1",
+      "components": [
+        {
+          "type": "body",
+          "parameters": [
+            "{{shortfall_amount}}",
+            "{{deadline}}",
+            "{{auto_square_off_time}}"
+          ]
+        }
+      ]
     },
     "push": {
       "title": "⚠️ Margin Call Warning",
