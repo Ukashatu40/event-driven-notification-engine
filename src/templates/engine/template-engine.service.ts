@@ -521,6 +521,12 @@ export class TemplateEngineService implements OnModuleInit {
               },
             ],
           },
+          email: {
+            subject: 'Order Rejected: {{stock_name}}',
+            textBody:
+              'Dear {{user_name}}, your order for {{stock_name}} was rejected. ' +
+              'Reason: {{reason}}. Please review and resubmit if needed.',
+          },
           push: {
             title: 'Order Rejected',
             body: '{{stock_name}} order rejected: {{reason}}',
@@ -604,6 +610,13 @@ export class TemplateEngineService implements OnModuleInit {
               },
             ],
           },
+          email: {
+            subject:
+              'Price Alert: {{stock_name}} {{direction}} {{target_price}}',
+            textBody:
+              'Dear {{user_name}}, {{stock_name}} has moved {{direction}} your target of {{target_price}}. ' +
+              'Current price: {{current_price}}.',
+          },
           push: {
             title: '📈 Price Alert: {{stock_name}}',
             body: '{{stock_name}} hit {{current_price}} | Target: {{target_price}}',
@@ -639,6 +652,12 @@ export class TemplateEngineService implements OnModuleInit {
               },
             ],
           },
+          email: {
+            subject: 'Circuit Breaker: {{stock_name}} Trading Halted',
+            textBody:
+              'Dear {{user_name}}, trading in {{stock_name}} has been halted due to a circuit breaker ' +
+              'at level {{circuit_level}}. Trading is expected to resume at {{resume_time}}.',
+          },
           push: {
             title: '⛔ Circuit Breaker: {{stock_name}}',
             body: 'Trading halted at {{circuit_level}}. Resumes {{resume_time}}.',
@@ -657,6 +676,16 @@ export class TemplateEngineService implements OnModuleInit {
         eventType: 'SIPX-001',
         version: 1,
         channels: {
+          sms: {
+            body: 'SIP Reminder: {{fund_name}} {{amount}} due {{due_date}}. Ensure sufficient balance. -{{app_name}}',
+            senderId: 'WLTHBR',
+          },
+          email: {
+            subject: 'SIP Payment Reminder: {{fund_name}}',
+            textBody:
+              'Dear {{user_name}}, your SIP of {{amount}} for {{fund_name}} is due on {{due_date}}. ' +
+              'Please ensure sufficient balance in your linked account.',
+          },
           push: {
             title: 'SIP Due Reminder',
             body: '{{fund_name}} SIP of {{amount}} due on {{sip_date}}',
@@ -707,6 +736,11 @@ export class TemplateEngineService implements OnModuleInit {
             textBody:
               'Your SIP has been executed. Fund: {{fund_name}}, Amount: {{amount}}, ' +
               'Units allotted: {{units_allotted}}, NAV: {{nav}}.',
+          },
+          push: {
+            title: '✅ SIP Executed',
+            body: '{{fund_name}}: {{units_allotted}} units @ NAV {{nav}}',
+            data: { action: 'open_portfolio' },
           },
           in_app: {
             title: 'SIP Executed',
@@ -759,6 +793,14 @@ export class TemplateEngineService implements OnModuleInit {
         eventType: 'REGX-005',
         version: 1,
         channels: {
+          sms: {
+            body: 'Regulatory Update: {{change_summary}}. Effective {{effective_date}}. -{{app_name}}',
+          },
+          push: {
+            title: '📋 Regulatory Update',
+            body: '{{change_summary}} — effective {{effective_date}}',
+            data: { action: 'open_notices' },
+          },
           email: {
             subject: 'Regulatory Update: {{change_summary}}',
             textBody:
