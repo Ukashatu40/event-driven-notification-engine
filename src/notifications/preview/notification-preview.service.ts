@@ -1,10 +1,8 @@
 // src/notifications/preview/notification-preview.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { TemplateEngineService } from '../../templates/engine/template-engine.service';
-import { PersonalisationService } from '../../templates/engine/personalisation.service';
 import { AbTestingService } from '../../templates/engine/ab-testing.service';
-import { SmsTruncationService } from '../../templates/engine/sms-truncation.service';
 import { SendTimeOptimizationService } from '../engine/send-time-optimization.service';
 import { DndClassifierService } from '../../compliance/dnd/dnd-classifier.service';
 import { FrequencyCapService } from '../../compliance/frequency-cap/frequency-cap.service';
@@ -12,11 +10,14 @@ import { PreferenceResolverService } from '../../preferences/preference-resolver
 import { EventType } from '../../shared/constants/event-types';
 import { Channel, ALL_CHANNELS } from '../../shared/constants/channels';
 import { Priority } from '../../shared/constants/priorities';
+import { type SupportedLocale } from '../../shared/utils/currency.util';
 
 export interface ChannelPreview {
   channel: Channel;
   enabled: boolean;
-  rendered: string | null;
+  subject?: string;
+  title?: string;
+  body: string | null;
   renderError: string | null;
 }
 
@@ -56,14 +57,10 @@ export interface NotificationPreview {
  */
 @Injectable()
 export class NotificationPreviewService {
-  private readonly logger = new Logger(NotificationPreviewService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly templateEngine: TemplateEngineService,
-    private readonly personalisation: PersonalisationService,
     private readonly abTesting: AbTestingService,
-    private readonly smsTruncation: SmsTruncationService,
     private readonly sendTimeOptimization: SendTimeOptimizationService,
     private readonly dndClassifier: DndClassifierService,
     private readonly frequencyCap: FrequencyCapService,
@@ -76,67 +73,66 @@ export class NotificationPreviewService {
     payload: Record<string, unknown>,
     localeOverride?: string,
   ): Promise<NotificationPreview> {
-    this.logger.debug('Debugging');
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
     if (!user) {
       throw new NotFoundException(`User ${userId} not found`);
     }
 
-    const locale = localeOverride ?? user.language.toLowerCase();
+    const locale = (localeOverride ??
+      user.language.toLowerCase()) as SupportedLocale;
     const eventTypeTyped = eventType as EventType;
 
     const variant = await this.abTesting.resolveVariant(userId, eventType);
     const classification = this.dndClassifier.classify(eventTypeTyped);
 
+    const resolvedPreference = await this.preferenceResolver.resolve(
+      userId,
+      eventTypeTyped,
+      user.accountType,
+    );
+
     const channelPreviews: ChannelPreview[] = [];
 
     for (const channel of ALL_CHANNELS) {
-      const resolved = await this.preferenceResolver.resolve(
-        userId,
-        eventTypeTyped,
-        channel,
-      );
+      const enabled = resolvedPreference.channels.includes(channel);
 
-      if (!resolved.enabled) {
+      if (!enabled) {
         channelPreviews.push({
           channel,
           enabled: false,
-          rendered: null,
+          body: null,
           renderError: null,
         });
         continue;
       }
 
       try {
-        const personalisedPayload = await this.personalisation.enrich(
-          payload,
-          user,
-          locale,
-        );
-
-        let rendered = await this.templateEngine.render(
+        const rendered = await this.templateEngine.render(
           variant.templateId,
           channel,
-          locale,
-          personalisedPayload,
+          {
+            userId,
+            userName: user.name,
+            language: locale,
+            timezone: user.timezone,
+            payload,
+          },
         );
-
-        if (channel === 'sms') {
-          rendered = this.smsTruncation.truncate(rendered);
-        }
 
         channelPreviews.push({
           channel,
           enabled: true,
-          rendered,
+          subject: rendered.subject,
+          title: rendered.title,
+          body: rendered.body,
           renderError: null,
         });
       } catch (err) {
         channelPreviews.push({
           channel,
           enabled: true,
-          rendered: null,
+          body: null,
           renderError: (err as Error).message,
         });
       }
