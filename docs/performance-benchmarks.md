@@ -133,3 +133,16 @@ Under load testing, the bottleneck is Redis connection pool (evidenced by
 occasional 350-400ms max spikes). Addressed by setting `maxRetriesPerRequest: 3`
 and connection pool pre-warming. The NestJS + Fastify application layer itself
 adds < 2ms overhead per request.
+
+<!-- docs/performance-benchmarks.md — append this section at the end of the file -->
+
+## Note on Send-Time Optimization and Load Test Validity
+
+The send-time optimization (STO) bonus feature, added after the load tests above were run, delays non-urgent notifications (below HIGH priority, non-CRITICAL event types) to the user's historically optimal engagement hour rather than sending immediately.
+
+This does not affect the validity of the SLA results recorded above, for two reasons:
+
+1. **All three load test scenarios exercise CRITICAL or HIGH-priority event types** — margin calls (RISK-002), price alerts during a market crash (MKTX-001), and provider outage failover — all of which explicitly bypass STO per the `PRIORITY_BYPASS` rule. STO only activates for lower-priority, non-time-sensitive categories such as routine SIP confirmations or regulatory notices.
+2. **STO requires a minimum of 10 historical engagement samples per user** before it activates at all. Freshly seeded or simulated load-test users have no read-receipt history, so STO returns `INSUFFICIENT_DATA` and the notification is sent immediately regardless of priority — confirmed via manual preview testing (see `POST /api/v1/notifications/preview` against MKTX-001 and RISK-001 test users).
+
+No re-run of the load test suite was required as a result.

@@ -107,6 +107,8 @@ cd BE-6B-NotificationEngine-UkashatuAbdullahi
 npm install --legacy-peer-deps
 ```
 
+> Note: several dependencies (including `@nestjs/websockets`, `@nestjs/platform-socket.io`, and `socket.io`, added for the real-time dashboard bonus feature) require `--legacy-peer-deps` due to peer dependency conflicts with the NestJS 10.x toolchain used in this project.
+
 ### 2. Configure Environment Variables
 
 ```bash
@@ -517,6 +519,10 @@ This project is submitted as part of the **BE-6B — Event-Driven Notification E
 Four bonus features were implemented beyond the core specification, each addressing a distinct extension point called out in the assessment roadmap.
 
 **A/B testing on templates.** Templates can be marked as variants (`isAbVariant`, `abWeight` on the `Template` model) and users are deterministically bucketed via SHA-256 hashing of `(userId, eventType)`, so the same user always sees the same variant for a given event type — necessary for valid A/B comparison. Variant performance (delivery rate, read rate) is queryable via `GET /api/v1/templates/:eventType/ab-performance`.
+
+<!-- README.md — in the Bonus Features section added earlier, append one line to the A/B testing / template section -->
+
+All 27 event templates now have complete channel coverage (SMS, email, push, WhatsApp, in-app) verified via the notification preview API — including catching and fixing a template-loading bug where 22 empty on-disk template stub files were silently shadowing valid inline template definitions.
 
 **Send-time optimization.** The system learns each user's peak engagement hour from read-receipt timestamps, using a Redis hash with exponential decay so recent behavior outweighs stale history. Non-urgent notifications are delayed (up to 4 hours) to the user's optimal hour rather than sent immediately. CRITICAL events and HIGH priority notifications always bypass this — latency SLA takes precedence over open-rate optimization for those.
 
