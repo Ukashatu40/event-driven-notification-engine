@@ -12,6 +12,8 @@ import { TemplatesModule } from '../templates/templates.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { SendTimeOptimizationService } from './engine/send-time-optimization.service';
 import { DashboardModule } from 'src/dashboard/dashboard.module';
+import { NotificationPreviewController } from './preview/notification-preview.controller';
+import { NotificationPreviewService } from './preview/notification-preview.service';
 
 @Module({
   imports: [
@@ -21,7 +23,7 @@ import { DashboardModule } from 'src/dashboard/dashboard.module';
     DeliveryModule,
     DashboardModule,
   ],
-  controllers: [NotificationsController],
+  controllers: [NotificationsController, NotificationPreviewController],
   providers: [
     NotificationsService,
     NotificationEngineService,
@@ -29,6 +31,7 @@ import { DashboardModule } from 'src/dashboard/dashboard.module';
     StateService,
     RoutingEngineService,
     SendTimeOptimizationService,
+    NotificationPreviewService,
   ],
   exports: [
     NotificationsService,
