@@ -52,7 +52,7 @@ export class AbTestingService {
       throw new Error(`No active template found for event type ${eventType}`);
     }
 
-    const control = variants.find((v) => !v.isAbVariant) ?? variants[0]!;
+    const control = variants.find((v) => !v.isAbVariant) ?? variants[0];
     const activeVariants = variants.filter((v) => v.isAbVariant);
 
     if (activeVariants.length === 0) {

@@ -105,3 +105,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - GitHub Actions CI pipeline scaffolded with AI, all steps verified
 - Handlebars helper registration pattern from AI suggestion, adapted for locale system
 - All business logic (compliance rules, routing algorithm, circuit breaker) written manually
+
+<!-- CHANGELOG.md — append this section at the top, under the existing entries -->
+
+## [1.1.0] - Bonus Features
+
+### Added
+
+- **A/B testing engine** for notification templates (`src/templates/engine/ab-testing.service.ts`). Deterministic SHA-256 bucketing on `(userId + eventType)` ensures stable variant assignment per user across repeated sends. Exposure and conversion tracking in Redis (90-day TTL). New endpoint: `GET /api/v1/templates/:eventType/ab-performance` returns delivery rate and read rate per variant.
+- **Send-time optimization** (`src/notifications/engine/send-time-optimization.service.ts`). Tracks per-user hourly engagement scores with exponential decay, favoring recent read behavior over historical data. Non-urgent notifications (below HIGH priority, non-CRITICAL event types) are delayed to the user's highest-scoring hour when sufficient data exists (10+ samples) and the delay is under 4 hours. CRITICAL and HIGH priority always bypass optimization to protect latency SLAs.
+- **Real-time WebSocket dashboard** (`src/dashboard/`). Socket.IO gateway broadcasting every notification state transition to subscribed clients. Two subscription modes: firehose (all notifications, JWT-gated to admin/ops roles) and per-user room (for in-app live feeds). Feature-flagged via `ENABLE_WEBSOCKET_DASHBOARD`. Tracked by the existing `active_websocket_connections` Prometheus gauge.
+- **Notification preview API** (`src/notifications/preview/`). `POST /api/v1/notifications/preview` renders a notification across all enabled channels — respecting the user's real preference resolution, A/B variant assignment, and locale — without persisting a notification record, queuing to RabbitMQ, or calling any delivery provider. Returns compliance context (DND classification, frequency cap usage) and the send-time optimization decision that would apply. Used for support/QA debugging.
+
+### Changed
+
+- `NotificationEngineService` now resolves template variant via `AbTestingService` instead of a hardcoded `${eventType}-v1` template ID, and records A/B exposure after successful queue publish.
+- `NotificationEngineService` now consults `SendTimeOptimizationService` before publishing non-urgent notifications; optimized notifications are scheduled via the existing retry-queue sorted set rather than sent immediately.
+- `NotificationStateLogService` now broadcasts every state transition via `DashboardGateway` (no-op when the feature flag is disabled).
+- Read-receipt handling now feeds `SendTimeOptimizationService.recordEngagement()` to build the per-user engagement profile used by send-time optimization.

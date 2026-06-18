@@ -509,3 +509,17 @@ Grafana dashboards provide visibility into:
 ## License
 
 This project is submitted as part of the **BE-6B — Event-Driven Notification Engine with Multi-Channel Delivery** engineering assessment and demonstrates production-grade backend architecture, distributed messaging patterns, resiliency engineering, compliance controls, and operational observability.
+
+<!-- README.md — insert this section -->
+
+## Bonus Features
+
+Four bonus features were implemented beyond the core specification, each addressing a distinct extension point called out in the assessment roadmap.
+
+**A/B testing on templates.** Templates can be marked as variants (`isAbVariant`, `abWeight` on the `Template` model) and users are deterministically bucketed via SHA-256 hashing of `(userId, eventType)`, so the same user always sees the same variant for a given event type — necessary for valid A/B comparison. Variant performance (delivery rate, read rate) is queryable via `GET /api/v1/templates/:eventType/ab-performance`.
+
+**Send-time optimization.** The system learns each user's peak engagement hour from read-receipt timestamps, using a Redis hash with exponential decay so recent behavior outweighs stale history. Non-urgent notifications are delayed (up to 4 hours) to the user's optimal hour rather than sent immediately. CRITICAL events and HIGH priority notifications always bypass this — latency SLA takes precedence over open-rate optimization for those.
+
+**Real-time WebSocket dashboard.** A Socket.IO gateway at `/dashboard` broadcasts every notification state transition live. Ops/admin clients can subscribe to the full firehose; individual users can subscribe to their own notification stream for an in-app live feed. Gated behind `ENABLE_WEBSOCKET_DASHBOARD`.
+
+**Notification preview API.** `POST /api/v1/notifications/preview` lets support and QA teams see exactly what a user would receive — across all channels, in their actual language, with their actual A/B variant — without sending anything. Useful for debugging "why did this user get this message" without side effects.
