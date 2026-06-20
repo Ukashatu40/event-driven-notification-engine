@@ -65,6 +65,8 @@ model Notification {
   metadata            Json?
   correlationId       String              @db.Uuid
   idempotencyKey      String?             @db.VarChar(255)
+  frequencyCapChecked Boolean             @default(false)
+  frequencyCapResult  String?              @db.VarChar(30)
   dndChecked          Boolean             @default(false)
   dndCheckTimestamp   DateTime?           @db.Timestamptz
   dndResult           String?             @db.VarChar(20)
