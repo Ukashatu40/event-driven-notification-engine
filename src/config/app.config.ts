@@ -21,4 +21,5 @@ export const appConfig = registerAs('app', () => ({
     refreshSecret: process.env.JWT_REFRESH_SECRET ?? '',
     refreshExpiry: process.env.JWT_REFRESH_EXPIRY ?? '7d',
   },
+  serviceKey: process.env.SERVICE_API_KEY ?? '',
 }));
