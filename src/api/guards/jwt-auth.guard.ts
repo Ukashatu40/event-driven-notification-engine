@@ -4,9 +4,11 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import type { FastifyRequest } from 'fastify';
 import * as jwt from 'jsonwebtoken';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 export interface JwtPayload {
   sub: string;
@@ -17,11 +19,20 @@ export interface JwtPayload {
 
 @Injectable()
 export class JwtAuthGuard {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly reflector: Reflector,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<FastifyRequest>();
+    // Allow routes decorated with @Public()
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true;
 
+    const request = context.switchToHttp().getRequest<FastifyRequest>();
     const token = this.extractToken(request);
 
     if (!token) {
