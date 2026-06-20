@@ -25,11 +25,12 @@ export class EventsService {
     dto: IngestEventDto,
     correlationId?: string,
   ): Promise<{
-    notificationId: string;
-    eventId: string;
+    notification_id: string;
+    event_id: string;
     status: string;
-    estimatedDeliveryMs: number;
-    createdAt: string;
+    channels_targeted: string[];
+    estimated_delivery_ms: number;
+    created_at: string;
   }> {
     const cid = correlationId ?? uuidv4();
 
@@ -37,14 +38,15 @@ export class EventsService {
       `Ingesting event ${dto.eventType} for user ${dto.userId} correlationId=${cid}`,
     );
 
-    const notificationId = await this.engine.process(dto, cid);
+    const result = await this.engine.process(dto, cid);
 
     return {
-      notificationId,
-      eventId: dto.eventId,
+      notification_id: result.notificationId,
+      event_id: dto.eventId,
       status: 'CREATED',
-      estimatedDeliveryMs: this.estimateDeliveryMs(dto.priority),
-      createdAt: new Date().toISOString(),
+      channels_targeted: result.channelsTargeted,
+      estimated_delivery_ms: this.estimateDeliveryMs(dto.priority),
+      created_at: new Date().toISOString(),
     };
   }
 
