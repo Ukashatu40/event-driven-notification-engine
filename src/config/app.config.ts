@@ -22,4 +22,10 @@ export const appConfig = registerAs('app', () => ({
     refreshExpiry: process.env.JWT_REFRESH_EXPIRY ?? '7d',
   },
   serviceKey: process.env.SERVICE_API_KEY ?? '',
+  webhooks: {
+    msg91Secret: process.env.MSG91_WEBHOOK_SECRET ?? '',
+    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? '',
+    fcmSecret: process.env.FCM_WEBHOOK_SECRET ?? '',
+    whatsappAppSecret: process.env.WHATSAPP_APP_SECRET ?? '',
+  },
 }));
