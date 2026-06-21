@@ -49,11 +49,15 @@ export class NotificationsService {
         metadata: log.metadata,
       })),
       compliance: {
-        dndChecked: notification.dndChecked,
-        dndCheckTimestamp: notification.dndCheckTimestamp?.toISOString(),
-        dndResult: notification.dndResult,
+        dnd_checked: notification.dndChecked,
+        dnd_check_timestamp: notification.dndCheckTimestamp?.toISOString(),
+        dnd_result: notification.dndResult,
         classification: notification.classification,
-        regulatoryOverride: notification.regulatoryOverride,
+        regulatory_override: notification.regulatoryOverride,
+        frequency_cap_checked:
+          (notification as any).frequencyCapChecked ?? false,
+        frequency_cap_result:
+          (notification as any).frequencyCapResult ?? 'WITHIN_LIMITS',
       },
       costPaisa: notification.costPaisa,
       correlationId: notification.correlationId,
@@ -192,5 +196,59 @@ export class NotificationsService {
     }
 
     return { resolved: true, action, dlqId };
+  }
+
+  /**
+   * GDPR-style right-to-erasure (spec Section A10.2).
+   * Anonymises all notification records for a given user by scrubbing
+   * personalisation_data (PII) while retaining metadata for analytics.
+   * Also removes user record and consent records.
+   */
+  async eraseUserData(userId: string): Promise<{
+    notifications_scrubbed: number;
+    consent_records_deleted: number;
+    user_anonymised: boolean;
+  }> {
+    // Scrub personalisation_data from all notifications (retain metadata for analytics)
+    const updateResult = await this.prisma.notification.updateMany({
+      where: { userId },
+      data: {
+        personalisationData: {
+          scrubbed: true,
+          scrubbed_at: new Date().toISOString(),
+        },
+        renderedContent: null,
+        metadata: { gdpr_erased: true, erased_at: new Date().toISOString() },
+      } as any,
+    });
+
+    // Delete consent records
+    const deletedConsent = await this.prisma.consentRecord.deleteMany({
+      where: { userId },
+    });
+
+    // Anonymise the user record (replace PII with hashed/null values)
+    const anonymisedPhone = `+910000000000`;
+    const anonymisedEmail = `erased_${userId.substring(0, 8)}@anonymised.invalid`;
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: '[ERASED]',
+        phone: anonymisedPhone,
+        email: anonymisedEmail,
+      },
+    });
+
+    this.logger.log(
+      `GDPR erasure completed for user ${userId}: ` +
+        `${updateResult.count} notifications scrubbed, ` +
+        `${deletedConsent.count} consent records deleted`,
+    );
+
+    return {
+      notifications_scrubbed: updateResult.count,
+      consent_records_deleted: deletedConsent.count,
+      user_anonymised: true,
+    };
   }
 }

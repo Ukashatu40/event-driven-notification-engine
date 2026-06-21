@@ -41,7 +41,10 @@ export class NotificationEngineService {
     private readonly sendTimeOptimization: SendTimeOptimizationService,
   ) {}
 
-  async process(dto: IngestEventDto, correlationId: string): Promise<string> {
+  async process(
+    dto: IngestEventDto,
+    correlationId: string,
+  ): Promise<{ notificationId: string; channelsTargeted: string[] }> {
     const notificationId = uuidv4();
 
     // ── Step 1: Deduplication ─────────────────────────────────────
@@ -61,7 +64,10 @@ export class NotificationEngineService {
       this.logger.debug(
         `Duplicate event ${dto.eventType} for user ${dto.userId} — reason: ${dupCheck.reason}`,
       );
-      return dupCheck.existingNotificationId ?? notificationId;
+      return {
+        notificationId: dupCheck.existingNotificationId ?? notificationId,
+        channelsTargeted: [],
+      };
     }
 
     // ── Step 2: Fetch user context ────────────────────────────────
@@ -81,7 +87,7 @@ export class NotificationEngineService {
 
     if (!user) {
       this.logger.error(`User ${dto.userId} not found — dropping event`);
-      return notificationId;
+      return { notificationId, channelsTargeted: [] };
     }
 
     // ── Step 3: Create notification record ────────────────────────
@@ -152,7 +158,7 @@ export class NotificationEngineService {
         new Date(routingDecision.quietHoursDelay.deliverAt),
       );
 
-      return notificationId;
+      return { notificationId, channelsTargeted: [] };
     }
 
     // Handle full suppression
@@ -163,7 +169,7 @@ export class NotificationEngineService {
         'routing_engine',
         { suppressedChannels: routingDecision.suppressedChannels },
       );
-      return notificationId;
+      return { notificationId, channelsTargeted: [] };
     }
 
     // ── Send-Time Optimization (STO) Interceptor ──────────────────
@@ -198,7 +204,7 @@ export class NotificationEngineService {
         `Notification ${notificationId} delayed ${Math.round(stoDecision.delayMs / 60000)}min for send-time optimization`,
       );
 
-      return notificationId; // Return safely without executing step 5
+      return { notificationId, channelsTargeted: routingDecision.channels }; // Return safely without executing step 5
     }
 
     await this.stateService.transition(
@@ -226,7 +232,7 @@ export class NotificationEngineService {
       );
     }
 
-    return notificationId;
+    return { notificationId, channelsTargeted: routingDecision.channels };
   }
 
   private async renderAndQueue(

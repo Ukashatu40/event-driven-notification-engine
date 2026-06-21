@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { PreferencesService } from './preferences.service';
 import { UpdatePreferenceDto } from './dto/update-preference.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('preferences')
 @ApiBearerAuth('JWT')
@@ -42,6 +43,8 @@ export class PreferencesController {
     return this.preferencesService.getPreferences(userId);
   }
 
+  // spec Section A10.1: 10 requests/minute for preference updates
+  @Throttle({ standard: { limit: 10, ttl: 60_000 } })
   @Put(':userId/preferences')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
