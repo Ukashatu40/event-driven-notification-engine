@@ -40,7 +40,7 @@ export class AbTestingService {
     eventType: string,
   ): Promise<TemplateVariant> {
     this.logger.debug('Debugging');
-    const variants = await this.prisma.template.findMany({
+    const variants = await (this.prisma as any).template.findMany({
       where: {
         eventType,
         isActive: true,
@@ -52,8 +52,12 @@ export class AbTestingService {
       throw new Error(`No active template found for event type ${eventType}`);
     }
 
-    const control = variants.find((v) => !v.isAbVariant) ?? variants[0];
-    const activeVariants = variants.filter((v) => v.isAbVariant);
+    const control =
+      variants.find((v: Record<string, unknown>) => !v['isAbVariant']) ??
+      variants[0];
+    const activeVariants = variants.filter(
+      (v: Record<string, unknown>) => v['isAbVariant'],
+    );
 
     if (activeVariants.length === 0) {
       return {
@@ -86,7 +90,13 @@ export class AbTestingService {
       templateId: control.id,
       version: control.version,
       isAbVariant: false,
-      abWeight: 100 - activeVariants.reduce((sum, v) => sum + v.abWeight, 0),
+      abWeight:
+        100 -
+        activeVariants.reduce(
+          (sum: number, v: Record<string, unknown>) =>
+            sum + (v['abWeight'] as number),
+          0,
+        ),
     };
   }
 
@@ -135,7 +145,7 @@ export class AbTestingService {
       readRate: number;
     }>
   > {
-    const variants = await this.prisma.template.findMany({
+    const variants = await (this.prisma as any).template.findMany({
       where: { eventType, isActive: true },
     });
 

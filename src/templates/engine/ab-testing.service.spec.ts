@@ -1,4 +1,10 @@
 // src/templates/engine/ab-testing.service.spec.ts
+// Mock PrismaService before any imports to avoid @prisma/client being required
+// (Prisma client is generated at runtime; types are not available without prisma generate)
+jest.mock('../../infrastructure/database/prisma.service', () => ({
+  PrismaService: class MockPrismaService {},
+}));
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { AbTestingService } from './ab-testing.service';
 import { PrismaService } from '../../infrastructure/database/prisma.service';

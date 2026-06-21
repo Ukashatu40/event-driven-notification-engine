@@ -1,6 +1,7 @@
 // src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import {
   appConfig,
@@ -24,6 +25,8 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { EventsModule } from './events/events.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { AuthModule } from './auth/auth.module';
+import { WebhooksModule } from './delivery/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -60,6 +63,16 @@ import { DashboardModule } from './dashboard/dashboard.module';
     }),
     DatabaseModule,
     RedisModule,
+    // Rate limiting — spec Section A10.1:
+    //   100 req/min standard, 1000/min webhooks, 10/min preference updates
+    //   Sliding window (not fixed) to prevent burst attacks at boundaries
+    ThrottlerModule.forRoot([
+      {
+        name: 'standard',
+        ttl: 60_000, // 60 seconds
+        limit: 100,
+      },
+    ]),
     KafkaModule,
     RabbitMQModule,
     SharedModule,
@@ -72,6 +85,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
     AnalyticsModule,
     EventsModule,
     DashboardModule,
+    AuthModule,
+    WebhooksModule,
   ],
 })
 export class AppModule {}
