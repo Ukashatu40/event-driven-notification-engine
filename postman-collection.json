@@ -1,0 +1,523 @@
+{
+  "info": {
+    "_postman_id": "be6b-notification-engine-collection",
+    "name": "BE-6B Event-Driven Notification Engine",
+    "description": "Pre-configured API test requests for the Zetheta BE-6B assessment.\nSpec Appendix A defines the exact contract shapes validated here.\n\nSetup:\n1. Set `baseUrl` variable to `http://localhost:3000`\n2. POST /api/v1/auth/login to obtain a token\n3. The login response sets `authToken` automatically via the test script",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
+    { "key": "authToken", "value": "", "type": "string" },
+    { "key": "testUserId", "value": "", "type": "string" },
+    { "key": "testNotificationId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login — obtain JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.data && r.data.access_token) {",
+                  "  pm.collectionVariables.set('authToken', r.data.access_token);",
+                  "  console.log('Token stored');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceKey\": \"{{serviceKey}}\",\n  \"role\": \"ADMIN\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Refresh token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Event Ingestion",
+      "item": [
+        {
+          "name": "Ingest margin call event (RISK-001 CRITICAL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 202', () => pm.response.to.have.status(202));",
+                  "const r = pm.response.json();",
+                  "pm.test('Has notification_id', () => pm.expect(r.data).to.have.property('notification_id'));",
+                  "pm.test('Has channels_targeted', () => pm.expect(r.data.channels_targeted).to.be.an('array'));",
+                  "pm.test('Status is CREATED', () => pm.expect(r.data.status).to.eql('CREATED'));",
+                  "if (r.data.notification_id) pm.collectionVariables.set('testNotificationId', r.data.notification_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "x-correlation-id", "value": "postman-test-001" }
+            ],
+            "url": "{{baseUrl}}/api/v1/events",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"RISK-001\",\n  \"eventId\": \"EVT-2025-03-19-MC-847291\",\n  \"sourceSystem\": \"margin_engine\",\n  \"timestamp\": \"2025-03-19T10:15:23.456Z\",\n  \"priority\": 1,\n  \"userId\": \"{{testUserId}}\",\n  \"payload\": {\n    \"shortfall_amount\": 125000.00,\n    \"current_margin\": 375000.00,\n    \"required_margin\": 500000.00,\n    \"deadline\": \"2025-03-19T11:30:00.000Z\",\n    \"affected_positions\": [\n      { \"symbol\": \"RELIANCE\", \"qty\": 500, \"current_value\": 620000.00 }\n    ],\n    \"auto_square_off_time\": \"2025-03-19T12:00:00.000Z\"\n  },\n  \"idempotencyKey\": \"margin-call-test-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Ingest buy order event (TXNX-001 HIGH)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/events",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"TXNX-001\",\n  \"eventId\": \"EVT-2025-03-19-BUY-001\",\n  \"sourceSystem\": \"trading_engine\",\n  \"timestamp\": \"2025-03-19T10:15:23.456Z\",\n  \"priority\": 2,\n  \"userId\": \"{{testUserId}}\",\n  \"payload\": {\n    \"stock_name\": \"RELIANCE\",\n    \"qty\": 100,\n    \"price\": 2450.50,\n    \"total\": 245050.00,\n    \"portfolio_value\": 1250000.00,\n    \"order_id\": \"ORD-001\"\n  },\n  \"idempotencyKey\": \"buy-order-test-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Ingest SIP executed (SIPX-002)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/events",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"SIPX-002\",\n  \"eventId\": \"EVT-SIP-001\",\n  \"sourceSystem\": \"sip_engine\",\n  \"timestamp\": \"2025-03-19T09:00:00.000Z\",\n  \"priority\": 2,\n  \"userId\": \"{{testUserId}}\",\n  \"payload\": {\n    \"fund_name\": \"Axis Bluechip Fund\",\n    \"units_allotted\": 12.345,\n    \"nav\": 405.23,\n    \"total_investment\": 75000.00\n  },\n  \"idempotencyKey\": \"sip-exec-test-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Validation error — missing required field (expect 422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "const r = pm.response.json();",
+                  "pm.test('Has error field', () => pm.expect(r).to.have.property('error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/events",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"TXNX-001\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notification Status",
+      "item": [
+        {
+          "name": "Get notification by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().data;",
+                  "pm.test('Has compliance block', () => pm.expect(r).to.have.property('compliance'));",
+                  "pm.test('Compliance has frequency_cap_checked', () => pm.expect(r.compliance).to.have.property('frequency_cap_checked'));",
+                  "pm.test('Has state_history', () => pm.expect(r.state_history).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/notifications/{{testNotificationId}}"
+          }
+        },
+        {
+          "name": "List notifications for user",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/notifications?page=1&limit=20",
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark notification as read",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/notifications/{{testNotificationId}}/read",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{testUserId}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Preferences",
+      "item": [
+        {
+          "name": "Get user preferences",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().data;",
+                  "pm.test('Has global_preferences', () => pm.expect(r).to.have.property('global_preferences'));",
+                  "pm.test('Has category_preferences', () => pm.expect(r).to.have.property('category_preferences'));",
+                  "pm.test('Has regulatory_overrides', () => pm.expect(r).to.have.property('regulatory_overrides'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/users/{{testUserId}}/preferences"
+          }
+        },
+        {
+          "name": "Update user preferences (MKTX → email only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().data;",
+                  "pm.test('Status updated', () => pm.expect(r.status).to.eql('updated'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/users/{{testUserId}}/preferences",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"MKTX\",\n  \"channels\": { \"sms\": false, \"email\": true, \"push\": false, \"whatsapp\": false, \"in_app\": true },\n  \"digestMode\": \"daily\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "Delivery rates — last 7 days",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().data;",
+                  "pm.test('Has summary', () => pm.expect(r).to.have.property('summary'));",
+                  "pm.test('Has by_channel', () => pm.expect(r).to.have.property('by_channel'));",
+                  "pm.test('Has by_priority', () => pm.expect(r).to.have.property('by_priority'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/analytics/delivery-rates?period=7d&channel=all",
+              "query": [
+                { "key": "period", "value": "7d" },
+                { "key": "channel", "value": "all" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Channel performance",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/analytics/channel-performance"
+          }
+        },
+        {
+          "name": "Opt-out trends",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/analytics/opt-out-trends"
+          }
+        }
+      ]
+    },
+    {
+      "name": "DLQ Management",
+      "item": [
+        {
+          "name": "List DLQ entries",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dlq?page=1&limit=20",
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve DLQ entry — retry",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/dlq/{{dlqId}}/resolve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"retry\",\n  \"resolvedBy\": \"ops-team\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notification Preview (Bonus)",
+      "item": [
+        {
+          "name": "Preview notification before opt-in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().data;",
+                  "pm.test('Has previews', () => pm.expect(r.previews).to.be.an('array').with.length.gt(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/notifications/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"RISK-001\",\n  \"userId\": \"{{testUserId}}\",\n  \"samplePayload\": {\n    \"shortfall_amount\": 125000,\n    \"deadline\": \"2025-03-19T11:30:00Z\",\n    \"auto_square_off_time\": \"2025-03-19T12:00:00Z\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "GDPR Erasure (Section A10.2)",
+      "item": [
+        {
+          "name": "Erase user data (right-to-erasure)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().data;",
+                  "pm.test('user_anonymised true', () => pm.expect(r.user_anonymised).to.be.true);",
+                  "pm.test('notifications_scrubbed is a number', () => pm.expect(r.notifications_scrubbed).to.be.a('number'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/users/{{testUserId}}/data"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health & Observability",
+      "item": [
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 503', () => pm.expect(pm.response.code).to.be.oneOf([200, 503]));",
+                  "const r = pm.response.json();",
+                  "pm.test('Has status field', () => pm.expect(r).to.have.property('status'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          }
+        },
+        {
+          "name": "Readiness probe",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/ready"
+          }
+        },
+        {
+          "name": "Liveness probe",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/live"
+          }
+        },
+        {
+          "name": "Prometheus metrics",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Content-Type text/plain', () => pm.expect(pm.response.headers.get('content-type')).to.include('text/plain'));",
+                  "pm.test('Has notification_events_received_total', () => pm.expect(pm.response.text()).to.include('notification_events_received_total'));",
+                  "pm.test('Has notification_delivery_total', () => pm.expect(pm.response.text()).to.include('notification_delivery_total'));",
+                  "pm.test('Has notification_dlq_depth', () => pm.expect(pm.response.text()).to.include('notification_dlq_depth'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhook DLR Callbacks (Section A10.2)",
+      "item": [
+        {
+          "name": "MSG91 SMS delivery receipt",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              {
+                "key": "x-msg91-signature",
+                "value": "test-signature-replace-in-prod"
+              }
+            ],
+            "url": "{{baseUrl}}/webhooks/dlr/sms/msg91",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"msgid\": \"msg91_test_external_id\",\n  \"status\": \"DELIVRD\",\n  \"number\": \"+919876543210\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Twilio SMS status callback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              },
+              { "key": "x-twilio-signature", "value": "test-replace-in-prod" }
+            ],
+            "url": "{{baseUrl}}/webhooks/dlr/sms/twilio",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "MessageSid", "value": "SM_test_message_sid" },
+                { "key": "MessageStatus", "value": "delivered" },
+                { "key": "To", "value": "+919876543210" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

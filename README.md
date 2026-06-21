@@ -419,7 +419,7 @@ The project documents key architectural decisions under `docs/adr/`.
 
 ---
 
-## Deliberate Error Log
+## Document Error Log
 
 The project includes a documented review of specification inconsistencies.
 

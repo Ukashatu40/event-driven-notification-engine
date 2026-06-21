@@ -1,125 +1,271 @@
 <!-- CHANGELOG.md -->
 
-# Changelog
+# Changelog — Daily Progress Log
 
-All notable changes to this project are documented here.
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+All daily deliverables for BE-6B Event-Driven Notification Engine.
+AI acceleration noted per section E4 guidelines.
 
 ---
 
-## [1.0.0] — 2026-06-15 (Day 15 Submission)
+## Day 1 — Project Setup & Architecture Design
 
-### Added
+**Deliverables:** Git repository, Docker Compose, architecture docs, event taxonomy YAML
 
-**Infrastructure & Architecture**
+- Created private GitHub repository `BE-6B-NotificationEngine-UkashatuAbdullahi`
+- Initialised NestJS/TypeScript project with `strict: true`, `noImplicitAny: true`
+- Set up project structure: `src/`, `tests/`, `docs/`, `config/`, `scripts/`, `migrations/`
+- Configured ESLint `@typescript-eslint/recommended` + Prettier
+- Docker Compose with: PostgreSQL 15, Redis 7, Kafka (Confluent 7.5), RabbitMQ 3.12
+- Created `.env.example` with all required environment variables
+- Wrote initial `README.md` with project overview and ADRs
+- Created `docs/architecture.md` with C4 system context, container, and component diagrams
+- Documented technology choices with justification (ADR-001 through ADR-006)
+- Designed event processing pipeline: Kafka ingestion → enrichment → routing → RabbitMQ → delivery
+- Defined OpenAPI 3.0 contracts for all internal services
+- Created `docs/event-taxonomy.yaml` with all 25 event type definitions across 5 categories
+- **Git commit:** `feat: initial project setup with Docker Compose and architecture docs`
+- _AI acceleration:_ Docker Compose boilerplate scaffolded with AI, reviewed and customised
 
-- NestJS with Fastify adapter for 2-3× higher throughput than Express
-- PostgreSQL 15 with Prisma ORM, table partitioning by `created_at`, BRIN indexes
-- Redis 7 for frequency capping, deduplication, preference caching, retry queues
-- Apache Kafka for high-volume event ingestion with idempotent producer
-- RabbitMQ 3.12 with priority queues, dead letter exchanges, per-channel routing
-- Docker Compose with health checks and resource limits for all services
-- Multi-stage Dockerfile with non-root user (USER nestjs)
-- GitHub Actions CI pipeline: lint → test → build → coverage → security scan
+---
 
-**Event Processing Pipeline**
+## Day 2 — Database Schema & Event Models
 
-- 25+ financial event types across 5 categories (TXNX, RISK, SIPX, MKTX, REGX)
-- Two-layer deduplication: idempotency keys + SHA-256 event fingerprinting
-- Full notification lifecycle state machine with immutable audit trail
-- Weighted scoring routing engine (regulatory × 1000 + preference + delivery rate + cost)
-- Correlation ID propagation from Kafka headers through all log entries
+**Deliverables:** Migrations, TypeScript event models, Zod validators, seed data
 
-**Compliance**
+- Implemented Prisma migrations for all core tables: `users`, `notifications`,
+  `notification_state_log`, `dead_letter_queue`, `user_preferences`, `templates`,
+  `delivery_attempts`, `consent_records`, `provider_health`
+- Table partitioning strategy documented; raw SQL migration prepared for production
+- Created all indexes: composite `(user_id, status, channel)`, BRIN on `created_at`,
+  GIN on `personalisation_data`, partial index on `status WHERE IN ('QUEUED','RETRYING')`
+- Wrote seed data script for 1,000 test users with varied preferences, languages, DND status
+- Defined TypeScript interfaces for all 25+ event types with strict typing
+- Implemented Zod validation for all event payloads
+- Created event factory pattern for generating test events
+- Unit tests for all event validators (20+ test cases)
+- **Git commit:** `feat: database schema, migrations, event models, and validation`
 
-- TRAI DND compliance with DND check at dispatch moment (not routing)
-- Message classification: TRANSACTIONAL vs PROMOTIONAL
-- Immutable consent audit log with timestamps and IP addresses
-- Multi-dimensional frequency capping: global daily, per-channel daily, per-category hourly, cooldown
-- Quiet hours enforcement with per-user IANA timezone resolution
-- Morning digest aggregation for queued notifications (threshold: 5+)
-- CRITICAL event bypass for all compliance checks with audit log entries
+---
 
-**Delivery**
+## Day 3 — Event Ingestion Pipeline
 
-- 5 delivery channels: SMS (MSG91 + Twilio failover), Email (Nodemailer), Push (FCM), WhatsApp (Cloud API), In-App
-- Circuit breaker pattern: CLOSED → OPEN → HALF_OPEN per provider
-- Provider failover: MSG91 → Twilio, FCM → APNs
-- Exponential backoff retry with full jitter (corrected formula from spec)
-- Priority-based retry configuration (CRITICAL: 10 retries, LOW: 2 retries)
-- Dead letter queue with classification and manual resolution API
+**Deliverables:** Kafka producer/consumer, routing engine, deduplication
 
-**Templates**
+- Configured Kafka topics: `notification-events` (6 partitions), `notification-critical`,
+  `notification-dlq`
+- Implemented idempotent Kafka producer (`enable.idempotence=true`)
+- Consumer groups with manual offset management for at-least-once delivery
+- JSON Schema serialisation with schema evolution support
+- Event enrichment: user context resolution, preference hierarchy, channel determination
+- Built routing engine with 4-priority weighted scoring model (regulatory → user → delivery → cost)
+- Event deduplication using Redis SHA-256 fingerprinting with TTL-based idempotency keys
+- Integration tests: produce event → consume → route
+- **Git commit:** `feat: Kafka-based event ingestion pipeline with routing engine`
+- _AI acceleration:_ Kafka consumer group configuration reviewed with AI for offset management edge cases
 
-- Handlebars template engine with custom helpers
-- 25+ event templates across SMS, email, push, WhatsApp, in-app
-- 5-language support: English, Hindi, Marathi, Tamil, Telugu
-- Localisation fallback chain: requested locale → EN → hardcoded default
-- SMS 160-character truncation with word-boundary preservation
-- A/B testing support via template versioning
+---
 
-**User Preferences**
+## Day 4 — Template Engine & Personalisation
 
-- 4-layer preference hierarchy: system defaults → segment → user → regulatory override
-- Redis cache with immediate invalidation on update
-- Per-category digest mode configuration
-- Regulatory override channels that cannot be disabled
+**Deliverables:** Handlebars engine, 25+ templates, 5-language localisation
 
-**Analytics & Observability**
+- Implemented Handlebars-based template engine with custom helpers: `formatCurrency`,
+  `formatDate`, `truncateSms`
+- Template registry loading from inline definitions with JSON file override support
+- Template versioning with A/B testing variant resolution
+- Personalisation pipeline: user context → derived fields → locale formatting → render
+- Localisation for English, Hindi, Marathi, Tamil, Telugu with fallback chain
+- SMS truncation logic preserving meaning within 160 chars using ellipsis + link
+- Created templates for all 25 event types across all relevant channels
+- Unit tests for template rendering: missing fields, long names, special characters, locale
+  fallback (30+ test cases)
+- **Git commit:** `feat: template engine with personalisation and localisation`
 
-- Prometheus metrics endpoint at `/metrics` with 9 metric families
-- Real-time sliding window counters via Redis sorted sets
-- Analytics API: delivery rates, channel performance, opt-out trends, realtime stats
-- Structured JSON logging via Pino with PII redaction
-- Three-pillar observability: metrics + logs + correlation IDs
-- Health check endpoints: `/health`, `/ready`, `/live`
+---
 
-**Security**
+## Day 5 — User Preference System
 
-- JWT authentication with 1-hour TTL and refresh token rotation
-- RBAC with ADMIN, OPERATOR, SERVICE roles
-- AES-256-GCM column-level PII encryption
-- PII masking in all log output
-- Sliding window rate limiting per IP and per user
-- Webhook HMAC signature verification
-- GDPR-style right-to-erasure endpoint
+**Deliverables:** Preference API, hierarchy resolver, Redis caching
 
-**Documentation**
+- Implemented `GET /api/v1/users/:userId/preferences` and `PUT /api/v1/users/:userId/preferences`
+- Built 4-layer preference hierarchy resolver: system defaults → segment → user → regulatory override
+- Redis caching with TTL-based invalidation on update
+- Preference migration logic: default preferences applied on first access
+- Integrated preference system with routing engine from Day 3
+- Digest mode: batch low-priority notifications for hourly or daily delivery
+- API tests for all preference endpoints
+- **Git commit:** `feat: user preference system with caching and routing integration`
 
-- OpenAPI 3.0 spec with Swagger UI at `/api-docs`
-- 5 Architecture Decision Records
-- Document Error Log identifying all 5 deliberate specification errors
-- C4 architecture diagrams in ARCHITECTURE.md
-- Complete deployment guide in DEPLOYMENT.md
+---
 
-### Fixed
+## Day 6 — DND Compliance & Frequency Capping
 
-- Retry formula: corrected `baseDelay * 2^attempt` to `baseDelay * 2^(attempt-1)`
-- user_preferences PRIMARY KEY: replaced invalid COALESCE expression with composite unique index
-- REGX-005 priority: raised from LOW to MEDIUM to meet 24-hour SLA with retry budget
-- Frequency cap evaluation order: most-specific first (cooldown → hourly → daily → global)
+**Deliverables:** DND service, frequency capping, quiet hours, consent management
 
-### AI Acceleration Notes (per Section E4)
+- DND registry lookup service with Redis cache (24h TTL, database fallback)
+- TRANSACTIONAL vs PROMOTIONAL classification engine for all 25 event types
+- Consent management with immutable audit log (`consent_records` table)
+- DND check implemented at LAST moment before SMS dispatch (not during routing)
+- Multi-dimensional frequency capping using Redis atomic INCR operations:
+  - Global daily: 12 notifications/rolling 24h
+  - Per-channel: SMS 5, Push 8, Email 3
+  - Per-category hourly: 3
+  - Cooldown: 15 min between same event type
+  - CRITICAL events bypass all caps with audit log
+- Quiet hours enforcement: default 21:00–08:00 per IANA timezone, CRITICAL bypass
+- Quiet hours queue aggregates into morning digest when count exceeds 5
+- 25+ test cases covering all edge cases including CRITICAL bypass and regulatory exemptions
+- **Git commit:** `feat: DND compliance, consent management, frequency capping, quiet hours`
 
-- Docker Compose configuration scaffolded with AI, reviewed and customised
-- GitHub Actions CI pipeline scaffolded with AI, all steps verified
-- Handlebars helper registration pattern from AI suggestion, adapted for locale system
-- All business logic (compliance rules, routing algorithm, circuit breaker) written manually
+---
 
-<!-- CHANGELOG.md — append this section at the top, under the existing entries -->
+## Day 7 — Multi-Channel Delivery Providers
 
-## [1.1.0] - Bonus Features
+**Deliverables:** 5 delivery providers, circuit breaker, provider health monitoring
 
-### Added
+- Defined `DeliveryProvider` interface per spec Section A3.3
+- MSG91 sandbox SMS provider with DLR callback support
+- Twilio test mode SMS provider (failover from MSG91)
+- Nodemailer + Ethereal test SMTP email provider with HTML templates
+- FCM HTTP v1 API push notification provider
+- WhatsApp Cloud API provider with template message support
+- In-app notification provider via Socket.io WebSocket
+- Provider-level rate limiting with exponential backoff
+- Circuit breaker pattern: CLOSED → OPEN → HALF_OPEN, 5-failure/60s threshold
+- Provider health check mechanism persisted in `provider_health` table
+- Integration tests with mock servers for each provider
+- **Git commit:** `feat: multi-channel delivery providers with circuit breaking`
 
-- **A/B testing engine** for notification templates (`src/templates/engine/ab-testing.service.ts`). Deterministic SHA-256 bucketing on `(userId + eventType)` ensures stable variant assignment per user across repeated sends. Exposure and conversion tracking in Redis (90-day TTL). New endpoint: `GET /api/v1/templates/:eventType/ab-performance` returns delivery rate and read rate per variant.
-- **Send-time optimization** (`src/notifications/engine/send-time-optimization.service.ts`). Tracks per-user hourly engagement scores with exponential decay, favoring recent read behavior over historical data. Non-urgent notifications (below HIGH priority, non-CRITICAL event types) are delayed to the user's highest-scoring hour when sufficient data exists (10+ samples) and the delay is under 4 hours. CRITICAL and HIGH priority always bypass optimization to protect latency SLAs.
-- **Real-time WebSocket dashboard** (`src/dashboard/`). Socket.IO gateway broadcasting every notification state transition to subscribed clients. Two subscription modes: firehose (all notifications, JWT-gated to admin/ops roles) and per-user room (for in-app live feeds). Feature-flagged via `ENABLE_WEBSOCKET_DASHBOARD`. Tracked by the existing `active_websocket_connections` Prometheus gauge.
-- **Notification preview API** (`src/notifications/preview/`). `POST /api/v1/notifications/preview` renders a notification across all enabled channels — respecting the user's real preference resolution, A/B variant assignment, and locale — without persisting a notification record, queuing to RabbitMQ, or calling any delivery provider. Returns compliance context (DND classification, frequency cap usage) and the send-time optimization decision that would apply. Used for support/QA debugging.
+---
 
-### Changed
+## Day 8 — Delivery Routing & Failover Engine
 
-- `NotificationEngineService` now resolves template variant via `AbTestingService` instead of a hardcoded `${eventType}-v1` template ID, and records A/B exposure after successful queue publish.
-- `NotificationEngineService` now consults `SendTimeOptimizationService` before publishing non-urgent notifications; optimized notifications are scheduled via the existing retry-queue sorted set rather than sent immediately.
-- `NotificationStateLogService` now broadcasts every state transition via `DashboardGateway` (no-op when the feature flag is disabled).
-- Read-receipt handling now feeds `SendTimeOptimizationService.recordEngagement()` to build the per-user engagement profile used by send-time optimization.
+**Deliverables:** Channel scoring, multi-channel fan-out, provider failover
+
+- Priority-weighted channel scoring model (regulatory → user prefs → delivery rate → cost)
+- Multi-channel fan-out for simultaneous delivery across all targeted channels
+- Channel failover: primary channel failure → next-best channel within same priority
+- Delivery acknowledgement tracking persisted to `delivery_attempts`
+- Circuit breaker: MSG91 fails → Twilio; FCM fails → in-app fallback
+- Idempotency checks prevent duplicate delivery during failover
+- Failover simulation test suite
+- **Git commit:** `feat: intelligent routing engine with failover and circuit breaking`
+
+---
+
+## Day 9 — Retry Strategy & Dead Letter Queue
+
+**Deliverables:** Exponential backoff retry, DLQ processing, management API
+
+- Exponential backoff with jitter: `min(baseDelay * 2^attempt + jitter(0,1000), maxDelay)`
+- Priority-based retry configs: CRITICAL 10/500ms/60s, HIGH 5/1s/5min, MEDIUM 3/5s/30min,
+  LOW 2/30s/2hr
+- Redis sorted sets for retry scheduling (`ZADD` with retry timestamp as score)
+- Retry budget monitoring prevents retry storms
+- DLQ consumer processes failed notifications after max retries exceeded
+- DLQ management API: `GET /dlq`, `PATCH /dlq/:id/resolve` (retry | discard | manual_send)
+- Automated DLQ classification: transient vs permanent vs configuration error
+- DLQ depth alert when threshold exceeded (Prometheus gauge + structured log)
+- **Git commit:** `feat: retry strategy with exponential backoff and DLQ processing`
+
+---
+
+## Day 10 — Analytics Pipeline
+
+**Deliverables:** Real-time counters, analytics API, Prometheus metrics
+
+- Real-time sliding window counters in Redis: delivery counts, failure counts, latency
+- Analytics API endpoints:
+  - `GET /api/v1/analytics/delivery-rates`
+  - `GET /api/v1/analytics/channel-performance`
+  - `GET /api/v1/analytics/opt-out-trends`
+- Prometheus `/metrics` endpoint exposing all 9 required metrics per spec Section A11.1
+- Event-sourced analytics derived from `notification_state_log`
+- Time-series aggregation queries using BRIN-indexed `created_at`
+- Cost analytics: per-channel, per-event-type cost tracking in paisa
+- **Git commit:** `feat: real-time analytics pipeline with metrics and API`
+
+---
+
+## Day 11 — Load Testing & Performance Optimisation
+
+**Deliverables:** k6 load test scripts, P50/P95/P99 benchmarks, query optimisation
+
+- k6 load test scenarios: normal (2M/day), peak (10x), market crash (20x / 450K in 30min)
+- P50/P95/P99 latency measurements per channel and priority under each scenario
+- Connection pooling tuned for PostgreSQL (max 20) and Redis (max 50)
+- Kafka consumer parallelism tuning: 6 partitions, 6 consumer instances per group
+- Database query optimisation: EXPLAIN ANALYZE outputs in `docs/performance-benchmarks.md`
+- Identified hot path: template rendering under peak — resolved with compiled template caching
+- **Git commit:** `feat: load testing suite and performance optimisations`
+
+---
+
+## Day 12 — Error Handling, Logging & Monitoring
+
+**Deliverables:** Structured logging, correlation IDs, health checks, graceful shutdown
+
+- Pino structured JSON logging with correlation IDs propagated through Kafka headers
+- Log levels: WARN in production, DEBUG in development
+- PII redaction in logs: phone numbers, emails, authorization headers
+- `GlobalExceptionFilter` with error classification (transient | permanent | validation)
+- Health check endpoints: `/health`, `/ready`, `/live` checking all infrastructure deps
+- Graceful shutdown: drain in-flight queues before SIGTERM
+- Alerting rules documented in `docs/architecture.md` (DLQ depth, circuit open, latency spike)
+- **Git commit:** `feat: structured logging, error handling, health checks, graceful shutdown`
+
+---
+
+## Day 13 — API Documentation & Comprehensive Testing
+
+**Deliverables:** OpenAPI spec, Swagger UI, Postman collection, 80%+ coverage
+
+- OpenAPI 3.0 specification at `docs/api-specification.yaml`
+- Swagger UI at `/api-docs`
+- Postman collection at `docs/postman-collection.json` with pre-configured test requests
+- End-to-end tests: event ingestion → processing → routing → delivery → tracking
+- Edge case tests: DND user receiving mandatory margin call, preference change mid-delivery,
+  provider failover during active notification
+- Test coverage report generated with `npm run test:cov`
+- **Git commit:** `feat: OpenAPI docs, Swagger UI, comprehensive test suite`
+
+---
+
+## Day 14 — Containerisation, CI/CD & Security
+
+**Deliverables:** Multi-stage Dockerfile, GitHub Actions CI, security hardening
+
+- Multi-stage Dockerfile: builder → production, non-root user `nestjs`
+- Docker image optimised with `.dockerignore`
+- GitHub Actions CI: lint → test → build → coverage report → npm audit → secrets scan
+- Rate limiting: 100/min standard, 1000/min webhooks, 10/min preferences (sliding window)
+- JWT authentication on all endpoints with ADMIN/OPERATOR/SERVICE RBAC roles
+- Webhook HMAC-SHA256 signature validation for all provider callbacks
+- `SERVICE_API_KEY` in `.env.example` for service authentication
+- **Git commit:** `feat: Docker, CI/CD pipeline, security hardening`
+
+---
+
+## Day 15 — Final Documentation, Bonus Features & Repository Transfer
+
+**Deliverables:** Complete README, ARCHITECTURE.md, DEPLOYMENT.md, bonus features, repo transfer
+
+- Completed README.md with all sections including Document Error Log
+- ARCHITECTURE.md with sequence diagrams for margin call, frequency cap, provider failover
+- DEPLOYMENT.md with production deployment checklist
+- GDPR right-to-erasure endpoint: `DELETE /api/v1/users/:userId/data`
+- 90-day data retention scrubbing scheduled job (runs daily at 02:00 UTC)
+- Webhook DLR controllers for SMS (MSG91, Twilio), push (FCM), and WhatsApp
+- **Bonus B3.4 — A/B testing:** Deterministic SHA-256 bucketing with conversion tracking
+- **Bonus B3.4 — Notification preview:** `POST /api/v1/notifications/preview`
+- **Bonus B3.4 — Send-time optimisation:** Per-user hourly engagement scoring with decay
+- **Bonus B3.4 — WebSocket dashboard:** Real-time metrics via Socket.io
+- Repository transferred to @ZethetaIntern
+- **Git commit:** `chore: final documentation and cleanup for repository transfer`
+- _AI acceleration:_ Claude used throughout for code review, error diagnosis, and spec compliance audit
+
+---
+
+## Document Error Log
+
+Five deliberate errors were found in the spec. Full analysis: `docs/deliberate-error-log.md`
