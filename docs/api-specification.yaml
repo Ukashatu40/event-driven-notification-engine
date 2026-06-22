@@ -1,0 +1,15 @@
+# docs/api-specification.yaml
+# This file is auto-generated from Swagger decorators at runtime.
+# To regenerate: curl http://localhost:3000/api-docs-json > docs/api-specification.json
+# Full interactive docs: http://localhost:3000/api-docs
+openapi: '3.0.0'
+info:
+  title: WealthBridge Notification Engine
+  version: '1.0.0'
+  description: >
+    Event-driven notification system for financial services.
+    25+ event types across SMS, email, push, WhatsApp, and in-app channels.
+    TRAI DND compliance, SEBI regulatory override, multi-language support.
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development

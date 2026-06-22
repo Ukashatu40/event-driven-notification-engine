@@ -143,6 +143,13 @@ export class AbTestingService {
       read: number;
       deliveryRate: number;
       readRate: number;
+      significanceVsControl: {
+        deliveryRatePValue: number;
+        readRatePValue: number;
+        isSignificant: boolean;
+        confidenceLevel: number;
+        winner: 'variant' | 'control' | 'no_difference';
+      } | null;
     }>
   > {
     const variants = await (this.prisma as any).template.findMany({
@@ -162,6 +169,10 @@ export class AbTestingService {
         this.redis.get(readKey),
       ]);
 
+      const exposureCount =
+        typeof exposures === 'number'
+          ? exposures
+          : parseInt(String(exposures ?? '0'), 10);
       const deliveredCount = parseInt(delivered ?? '0', 10);
       const readCount = parseInt(read ?? '0', 10);
 
@@ -169,15 +180,138 @@ export class AbTestingService {
         templateId: variant.id,
         version: variant.version,
         isAbVariant: variant.isAbVariant,
-        exposures,
+        exposures: exposureCount,
         delivered: deliveredCount,
         read: readCount,
-        deliveryRate: exposures > 0 ? deliveredCount / exposures : 0,
+        deliveryRate: exposureCount > 0 ? deliveredCount / exposureCount : 0,
         readRate: deliveredCount > 0 ? readCount / deliveredCount : 0,
+        significanceVsControl: null as unknown as {
+          deliveryRatePValue: number;
+          readRatePValue: number;
+          isSignificant: boolean;
+          confidenceLevel: number;
+          winner: 'variant' | 'control' | 'no_difference';
+        } | null,
       });
     }
 
+    // Statistical significance: two-proportion z-test (spec B3.4: "with statistical significance calculation")
+    // Uses 95% confidence threshold (α = 0.05, z-critical = 1.96)
+    const control = results.find((r) => !r.isAbVariant);
+    if (control) {
+      for (const result of results) {
+        if (!result.isAbVariant) continue;
+
+        result.significanceVsControl = this.calculateSignificance(
+          control.exposures,
+          control.delivered,
+          result.exposures,
+          result.delivered,
+          control.read,
+          result.read,
+        );
+      }
+    }
+
     return results;
+  }
+
+  /**
+   * Two-proportion z-test for statistical significance.
+   * Spec B3.4: "A/B testing for notification templates with statistical significance calculation"
+   *
+   * Tests H0: p_control == p_variant at 95% confidence level (z_critical = 1.96).
+   * Returns p-value approximation from z-score using the complementary error function.
+   *
+   * @returns significance object with p-values and winner determination
+   */
+  private calculateSignificance(
+    controlN: number,
+    controlDelivered: number,
+    variantN: number,
+    variantDelivered: number,
+    controlRead: number,
+    variantRead: number,
+  ): {
+    deliveryRatePValue: number;
+    readRatePValue: number;
+    isSignificant: boolean;
+    confidenceLevel: number;
+    winner: 'variant' | 'control' | 'no_difference';
+  } {
+    const Z_CRITICAL = 1.96; // 95% confidence
+    const MIN_SAMPLE = 30; // minimum sample size for valid z-test
+
+    const deliveryZ = this.twoProportionZ(
+      controlN,
+      controlDelivered,
+      variantN,
+      variantDelivered,
+    );
+    const readZ = this.twoProportionZ(
+      controlN,
+      controlRead,
+      variantN,
+      variantRead,
+    );
+
+    const deliveryPValue = this.zToPValue(deliveryZ);
+    const readPValue = this.zToPValue(readZ);
+
+    const hasEnoughData = controlN >= MIN_SAMPLE && variantN >= MIN_SAMPLE;
+    const isSignificant =
+      hasEnoughData &&
+      (Math.abs(deliveryZ) > Z_CRITICAL || Math.abs(readZ) > Z_CRITICAL);
+
+    const controlDeliveryRate = controlN > 0 ? controlDelivered / controlN : 0;
+    const variantDeliveryRate = variantN > 0 ? variantDelivered / variantN : 0;
+
+    let winner: 'variant' | 'control' | 'no_difference' = 'no_difference';
+    if (isSignificant) {
+      winner =
+        variantDeliveryRate > controlDeliveryRate ? 'variant' : 'control';
+    }
+
+    return {
+      deliveryRatePValue: Math.round(deliveryPValue * 10000) / 10000,
+      readRatePValue: Math.round(readPValue * 10000) / 10000,
+      isSignificant,
+      confidenceLevel: 0.95,
+      winner,
+    };
+  }
+
+  /** Two-proportion z-score: (p1 - p2) / sqrt(p_pool * (1-p_pool) * (1/n1 + 1/n2)) */
+  private twoProportionZ(
+    n1: number,
+    x1: number,
+    n2: number,
+    x2: number,
+  ): number {
+    if (n1 === 0 || n2 === 0) return 0;
+    const p1 = x1 / n1;
+    const p2 = x2 / n2;
+    const pPool = (x1 + x2) / (n1 + n2);
+    const se = Math.sqrt(pPool * (1 - pPool) * (1 / n1 + 1 / n2));
+    return se === 0 ? 0 : (p1 - p2) / se;
+  }
+
+  /**
+   * Approximates two-tailed p-value from z-score.
+   * Uses Abramowitz & Stegun rational approximation (error < 1.5e-7).
+   */
+  private zToPValue(z: number): number {
+    const absZ = Math.abs(z);
+    const t = 1 / (1 + 0.2316419 * absZ);
+    const poly =
+      t *
+      (0.31938153 +
+        t *
+          (-0.356563782 +
+            t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+    const pdf = Math.exp(-0.5 * absZ * absZ) / Math.sqrt(2 * Math.PI);
+    const oneTail = pdf * poly;
+    return Math.min(1, 2 * oneTail); // two-tailed
   }
 
   private getBucket(userId: string, eventType: string): number {

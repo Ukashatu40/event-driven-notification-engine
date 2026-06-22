@@ -21,7 +21,7 @@
     "OpenTelemetry"
   ],
   "duration_days": 15,
-  "github_repo_url": "https://github.com/Ukashatu40/BE-6B-NotificationEngine-UkashatuAbdullahi",
+  "github_repo_url": "https://github.com/ZethetaIntern/BE-6B-NotificationEngine-UkashatuAbdullahi",
   "assessment_criteria": {
     "event_driven_architecture": true,
     "multi_channel_delivery": true,
