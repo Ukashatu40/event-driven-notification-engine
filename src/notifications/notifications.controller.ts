@@ -20,7 +20,9 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
+import { DlqQueryDto, ResolveDlqDto } from './dto/dlq.dto';
 import { PaginationDto } from '../shared/dto/pagination.dto';
+import { Roles } from '../api/decorators/roles.decorator';
 
 @ApiTags('notifications')
 @ApiBearerAuth('JWT')
@@ -28,6 +30,7 @@ import { PaginationDto } from '../shared/dto/pagination.dto';
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
+  @Roles('ADMIN', 'OPERATOR', 'SERVICE')
   @Get('notifications/:notificationId')
   @ApiOperation({ summary: 'Get notification status and full state history' })
   @ApiParam({ name: 'notificationId', type: String, format: 'uuid' })
@@ -39,6 +42,7 @@ export class NotificationsController {
     return this.notificationsService.findById(notificationId);
   }
 
+  @Roles('ADMIN', 'OPERATOR', 'SERVICE')
   @Get('users/:userId/notifications')
   @ApiOperation({ summary: 'Get paginated notifications for a user' })
   @ApiParam({ name: 'userId', type: String, format: 'uuid' })
@@ -51,21 +55,25 @@ export class NotificationsController {
     return this.notificationsService.findByUser(userId, pagination);
   }
 
+  @Roles('ADMIN', 'OPERATOR')
   @Get('dlq')
-  @ApiOperation({ summary: 'List unresolved dead letter queue entries' })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  async getDlq(@Query() pagination: PaginationDto): Promise<object> {
-    return this.notificationsService.getDlqEntries(pagination);
+  @ApiOperation({
+    summary: 'List unresolved dead letter queue entries',
+    description:
+      'Filter by `classification` (TRANSIENT | PERMANENT | CONFIGURATION) and/or `reason` (substring of the failure reason or error code).',
+  })
+  async getDlq(@Query() query: DlqQueryDto): Promise<object> {
+    return this.notificationsService.getDlqEntries(query);
   }
 
+  @Roles('ADMIN')
   @Patch('dlq/:dlqId/resolve')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resolve a DLQ entry — retry or discard' })
   @ApiParam({ name: 'dlqId', type: String, format: 'uuid' })
   async resolveDlq(
     @Param('dlqId', ParseUUIDPipe) dlqId: string,
-    @Body() body: { action: 'retry' | 'discard'; resolvedBy: string },
+    @Body() body: ResolveDlqDto,
   ): Promise<object> {
     return this.notificationsService.resolveDlqEntry(
       dlqId,
@@ -74,6 +82,7 @@ export class NotificationsController {
     );
   }
 
+  @Roles('ADMIN', 'SERVICE')
   @Patch('notifications/:notificationId/read')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Mark a notification as read' })
@@ -95,6 +104,7 @@ export class NotificationsController {
    *   - anonymises the user record
    * Metadata is retained for analytics.
    */
+  @Roles('ADMIN')
   @Delete('users/:userId/data')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

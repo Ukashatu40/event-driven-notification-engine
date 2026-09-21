@@ -16,6 +16,7 @@ import {
 } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { IngestEventDto } from '../notifications/dto/ingest-event.dto';
+import { Roles } from '../api/decorators/roles.decorator';
 
 @ApiTags('events')
 @ApiBearerAuth('JWT')
@@ -23,6 +24,7 @@ import { IngestEventDto } from '../notifications/dto/ingest-event.dto';
 export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 
+  @Roles('SERVICE', 'ADMIN')
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({

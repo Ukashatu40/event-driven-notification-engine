@@ -33,28 +33,26 @@ export class DataRetentionJob {
     );
 
     try {
-      const result = await this.prisma.notification.updateMany({
-        where: {
-          createdAt: { lt: cutoff },
-          // Only scrub if not already scrubbed (check for retention marker)
-          NOT: {
-            metadata: {
-              path: ['retention_scrubbed'],
-              equals: true,
-            },
-          },
-        },
-        data: {
-          // Replace personalisation_data (PII) with a retention marker
-          personalisationData: {
-            retention_scrubbed: true,
-            scrubbed_at: new Date().toISOString(),
-            retention_policy_days: DataRetentionJob.RETENTION_DAYS,
-          },
-          // Null out rendered content (also contains PII)
-          renderedContent: null,
-        } as any,
-      });
+      // Raw SQL on purpose. The obvious Prisma form,
+      //   NOT: { metadata: { path: [...], equals: true } }
+      // compiles to `NOT (metadata #> path = true)`, which is NULL — not true —
+      // for every row whose metadata (or that key) is missing, i.e. nearly all
+      // of them, so the scrub silently matched nothing. COALESCE makes "key
+      // absent" mean "not scrubbed yet".
+      const count = await this.prisma.$executeRaw`
+        UPDATE "notifications"
+        SET "personalisationData" = jsonb_build_object(
+              'retention_scrubbed', true,
+              'scrubbed_at', ${new Date().toISOString()}::text,
+              'retention_policy_days', ${DataRetentionJob.RETENTION_DAYS}::int
+            ),
+            "renderedContent" = NULL,
+            "updatedAt" = now()
+        WHERE "createdAt" < ${cutoff}
+          AND COALESCE("personalisationData" ->> 'retention_scrubbed', 'false') <> 'true'
+          AND COALESCE("personalisationData" ->> 'scrubbed', 'false') <> 'true'
+      `;
+      const result = { count };
 
       this.logger.log(
         `[DataRetention] Scrubbed ${result.count} notifications older than ${DataRetentionJob.RETENTION_DAYS} days`,

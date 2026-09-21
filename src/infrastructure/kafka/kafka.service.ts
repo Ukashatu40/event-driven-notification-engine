@@ -233,6 +233,36 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Consumer ${groupId} subscribed to: ${topics.join(', ')}`);
   }
 
+  /**
+   * Consumer lag per partition: (log-end offset) − (group's committed offset).
+   * A partition the group has never committed on counts its whole log as lag.
+   */
+  async getConsumerLag(
+    groupId: string,
+    topic: string,
+  ): Promise<Array<{ partition: number; lag: number }>> {
+    const [end, committed] = await Promise.all([
+      this.admin.fetchTopicOffsets(topic),
+      this.admin.fetchOffsets({ groupId, topics: [topic] }),
+    ]);
+    const committedBy = new Map(
+      (committed[0]?.partitions ?? []).map((p) => [
+        p.partition,
+        Number(p.offset),
+      ]),
+    );
+
+    return end.map((p) => {
+      const done = committedBy.get(p.partition);
+      // offset -1 means "no commit yet"
+      const consumed = done === undefined || done < 0 ? Number(p.low) : done;
+      return {
+        partition: p.partition,
+        lag: Math.max(0, Number(p.offset) - consumed),
+      };
+    });
+  }
+
   async ping(): Promise<boolean> {
     try {
       await this.admin.listTopics();

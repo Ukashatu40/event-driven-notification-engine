@@ -1,0 +1,194 @@
+# docs/event-taxonomy.yaml
+version: '1.0'
+description: 'Financial event taxonomy for the WealthBridge notification engine'
+categories:
+  TXNX:
+    name: 'Transaction Events'
+    events:
+      TXNX-001:
+        {
+          name: 'Buy Order Executed',
+          urgency: HIGH,
+          regulatory: SEBI,
+          maxLatencySeconds: 30,
+        }
+      TXNX-002:
+        {
+          name: 'Sell Order Executed',
+          urgency: HIGH,
+          regulatory: SEBI,
+          maxLatencySeconds: 30,
+        }
+      TXNX-003:
+        {
+          name: 'Order Rejected',
+          urgency: HIGH,
+          regulatory: Required,
+          maxLatencySeconds: 15,
+        }
+      TXNX-004:
+        {
+          name: 'Dividend Credited',
+          urgency: MEDIUM,
+          regulatory: Informational,
+          maxLatencySeconds: 3600,
+        }
+      TXNX-005:
+        {
+          name: 'Funds Deposited',
+          urgency: HIGH,
+          regulatory: Banking,
+          maxLatencySeconds: 60,
+        }
+  RISK:
+    name: 'Risk and Margin Events'
+    events:
+      RISK-001:
+        {
+          name: 'Margin Call Warning',
+          urgency: CRITICAL,
+          regulatory: SEBI,
+          maxLatencySeconds: 10,
+        }
+      RISK-002:
+        {
+          name: 'Margin Shortfall',
+          urgency: CRITICAL,
+          regulatory: SEBI,
+          maxLatencySeconds: 5,
+        }
+      RISK-003:
+        {
+          name: 'Position Squared Off',
+          urgency: CRITICAL,
+          regulatory: SEBI,
+          maxLatencySeconds: 15,
+        }
+      RISK-004:
+        {
+          name: 'Portfolio Risk Alert',
+          urgency: HIGH,
+          regulatory: Advisory,
+          maxLatencySeconds: 300,
+        }
+      RISK-005:
+        {
+          name: 'Concentration Alert',
+          urgency: MEDIUM,
+          regulatory: Advisory,
+          maxLatencySeconds: 3600,
+        }
+  SIPX:
+    name: 'SIP and Investment Events'
+    events:
+      SIPX-001:
+        {
+          name: 'SIP Due Reminder',
+          urgency: MEDIUM,
+          regulatory: BestPractice,
+          maxLatencyDays: 3,
+        }
+      SIPX-002:
+        {
+          name: 'SIP Executed',
+          urgency: HIGH,
+          regulatory: AMFI,
+          maxLatencySeconds: 7200,
+        }
+      SIPX-003:
+        {
+          name: 'SIP Failed',
+          urgency: HIGH,
+          regulatory: Required,
+          maxLatencySeconds: 1800,
+        }
+      SIPX-004:
+        {
+          name: 'SIP Step-Up Reminder',
+          urgency: LOW,
+          regulatory: Advisory,
+          frequency: Annual,
+        }
+      SIPX-005:
+        {
+          name: 'Goal Milestone Reached',
+          urgency: LOW,
+          regulatory: Engagement,
+          maxLatencySeconds: 14400,
+        }
+  MKTX:
+    name: 'Market and Price Events'
+    events:
+      MKTX-001:
+        {
+          name: 'Price Alert Triggered',
+          urgency: HIGH,
+          regulatory: UserSet,
+          maxLatencySeconds: 15,
+        }
+      MKTX-002:
+        {
+          name: 'Circuit Breaker Hit',
+          urgency: CRITICAL,
+          regulatory: Exchange,
+          maxLatencySeconds: 10,
+        }
+      MKTX-003:
+        {
+          name: 'Market Open/Close',
+          urgency: LOW,
+          regulatory: Engagement,
+          maxLatency: AtEventTime,
+        }
+      MKTX-004:
+        {
+          name: '52-Week High/Low',
+          urgency: MEDIUM,
+          regulatory: Advisory,
+          maxLatencySeconds: 1800,
+        }
+      MKTX-005:
+        {
+          name: 'Earnings Announcement',
+          urgency: MEDIUM,
+          regulatory: Advisory,
+          maxLatencyDays: 1,
+        }
+  REGX:
+    name: 'Regulatory and Compliance Events'
+    events:
+      REGX-001:
+        {
+          name: 'KYC Expiry Warning',
+          urgency: HIGH,
+          regulatory: SEBI,
+          schedule: 'T-30,T-15,T-7',
+        }
+      REGX-002:
+        {
+          name: 'Nominee Update Reminder',
+          urgency: MEDIUM,
+          regulatory: SEBI,
+          frequency: Quarterly,
+        }
+      REGX-003:
+        {
+          name: 'Contract Note Generated',
+          urgency: HIGH,
+          regulatory: SEBI,
+          schedule: 'T+1 EOD',
+        }
+      REGX-004:
+        {
+          name: 'Tax Statement Available',
+          urgency: MEDIUM,
+          regulatory: ITAct,
+          frequency: Quarterly,
+        }
+      REGX-005:
+        {
+          name: 'Regulatory Policy Change',
+          urgency: MEDIUM,
+          regulatory: Informational,
+          maxLatencySeconds: 86400,
+        }

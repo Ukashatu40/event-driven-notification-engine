@@ -3,8 +3,8 @@
 import {
   createCipheriv,
   createDecipheriv,
+  createHmac,
   randomBytes,
-  scryptSync,
 } from 'crypto';
 
 /**
@@ -36,62 +36,82 @@ export function maskAccountNumber(account: string): string {
 }
 
 // ── AES-256-GCM encryption for PII at rest ────────────────────────
+//
+// Stored format:  enc:v1:<base64( iv(12) | authTag(16) | ciphertext )>
+//
+// - AES-256-GCM authenticates as well as encrypts: any tampering with the
+//   stored value makes decryption throw instead of returning garbage.
+// - A fresh random 96-bit IV per value, so identical inputs never produce the
+//   same ciphertext (which is why equality lookups use blindIndex() below).
+// - The "v1" segment names the key generation, so a rotated key can be added
+//   later without rewriting every row at once.
+//
+// The key is a raw 32-byte Buffer supplied by the caller (from
+// PII_ENCRYPTION_KEY) — never derived from another secret, never defaulted.
 
 const ALGORITHM = 'aes-256-gcm';
-const KEY_LENGTH = 32;
-const IV_LENGTH = 16;
-const AUTH_TAG_LENGTH = 16;
+const KEY_BYTES = 32;
+const IV_BYTES = 12;
+const AUTH_TAG_BYTES = 16;
 
-function deriveKey(secret: string): Buffer {
-  return scryptSync(secret, 'notification-engine-salt', KEY_LENGTH);
+export const PII_CIPHERTEXT_PREFIX = 'enc:v1:';
+
+export function isEncryptedPii(value: string): boolean {
+  return value.startsWith(PII_CIPHERTEXT_PREFIX);
 }
 
-export function encryptPii(
-  plaintext: string,
-  secret: string = process.env.JWT_SECRET ?? 'fallback-dev-secret',
-): string {
-  const key = deriveKey(secret);
-  const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, key, iv, {
-    authTagLength: AUTH_TAG_LENGTH,
-  });
+function assertKey(key: Buffer): void {
+  if (key.length !== KEY_BYTES) {
+    throw new Error(`PII key must be ${KEY_BYTES} bytes, got ${key.length}`);
+  }
+}
 
+export function encryptPii(plaintext: string, key: Buffer): string {
+  assertKey(key);
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv(ALGORITHM, key, iv, {
+    authTagLength: AUTH_TAG_BYTES,
+  });
   const encrypted = Buffer.concat([
     cipher.update(plaintext, 'utf8'),
     cipher.final(),
   ]);
-
-  const authTag = cipher.getAuthTag();
-
-  // Format: iv:authTag:encrypted (all base64)
-  return [
-    iv.toString('base64'),
-    authTag.toString('base64'),
-    encrypted.toString('base64'),
-  ].join(':');
+  const packed = Buffer.concat([iv, cipher.getAuthTag(), encrypted]);
+  return PII_CIPHERTEXT_PREFIX + packed.toString('base64');
 }
 
-export function decryptPii(
-  ciphertext: string,
-  secret: string = process.env.JWT_SECRET ?? 'fallback-dev-secret',
-): string {
-  const [ivB64, authTagB64, encryptedB64] = ciphertext.split(':');
-
-  if (!ivB64 || !authTagB64 || !encryptedB64) {
-    throw new Error('Invalid ciphertext format');
+export function decryptPii(stored: string, key: Buffer): string {
+  assertKey(key);
+  if (!isEncryptedPii(stored)) {
+    throw new Error('Value is not in the encrypted PII format');
   }
-
-  const key = deriveKey(secret);
-  const iv = Buffer.from(ivB64, 'base64');
-  const authTag = Buffer.from(authTagB64, 'base64');
-  const encrypted = Buffer.from(encryptedB64, 'base64');
+  const packed = Buffer.from(
+    stored.slice(PII_CIPHERTEXT_PREFIX.length),
+    'base64',
+  );
+  if (packed.length < IV_BYTES + AUTH_TAG_BYTES) {
+    throw new Error('Encrypted PII value is truncated');
+  }
+  const iv = packed.subarray(0, IV_BYTES);
+  const authTag = packed.subarray(IV_BYTES, IV_BYTES + AUTH_TAG_BYTES);
+  const encrypted = packed.subarray(IV_BYTES + AUTH_TAG_BYTES);
 
   const decipher = createDecipheriv(ALGORITHM, key, iv, {
-    authTagLength: AUTH_TAG_LENGTH,
+    authTagLength: AUTH_TAG_BYTES,
   });
   decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString(
+    'utf8',
+  );
+}
 
-  return decipher.update(encrypted).toString('utf8') + decipher.final('utf8');
+/**
+ * Deterministic keyed hash (HMAC-SHA256, hex) used as a "blind index": it lets
+ * the database enforce uniqueness and answer "does this phone/email exist?"
+ * without holding the plaintext. Uses a key SEPARATE from the encryption key.
+ */
+export function blindIndex(normalisedValue: string, key: Buffer): string {
+  return createHmac('sha256', key).update(normalisedValue).digest('hex');
 }
 
 // ── Object sanitizer — strips PII from log payloads ──────────────

@@ -1,8 +1,19 @@
 // src/notifications/notifications.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { PrismaService } from '../infrastructure/database/prisma.service';
 import { StateService } from './state-machine/state.service';
 import { PaginationDto, paginate } from '../shared/dto/pagination.dto';
+import { PiiService } from '../shared/pii/pii.service';
+import { DispatchService } from '../delivery/dispatch/dispatch.service';
+import { PrometheusService } from '../health/prometheus/prometheus.service';
+import { NotificationStatus } from '../shared/constants/notification-states';
+import { DlqQueryDto } from './dto/dlq.dto';
 // import { type Prisma } from '@prisma/client';
 // import { NotificationStateLog } from '@prisma/client';
 import { SendTimeOptimizationService } from './engine/send-time-optimization.service'; // Adjust import path as needed
@@ -14,6 +25,9 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly stateService: StateService,
     private readonly sendTimeOptimization: SendTimeOptimizationService,
+    private readonly pii: PiiService,
+    private readonly dispatch: DispatchService,
+    private readonly prometheus: PrometheusService,
   ) {}
 
   async findById(notificationId: string): Promise<object> {
@@ -41,13 +55,24 @@ export class NotificationsService {
       externalId: notification.externalId,
       deliveryAttempts: notification.deliveryAttempts,
       renderedContent: notification.renderedContent,
-      stateHistory: notification.stateLogs.map((log: any) => ({
-        status: log.toStatus,
-        fromStatus: log.fromStatus,
-        timestamp: log.createdAt.toISOString(),
-        actor: log.actor,
-        metadata: log.metadata,
-      })),
+      // The state log records transitions; the initial CREATED state has no
+      // "from", so it is reconstructed from the record itself (spec Appendix A
+      // lists CREATED first, actor event_ingestion).
+      stateHistory: [
+        {
+          status: 'CREATED',
+          fromStatus: null,
+          timestamp: notification.createdAt.toISOString(),
+          actor: 'event_ingestion',
+        },
+        ...notification.stateLogs.map((log: any) => ({
+          status: log.toStatus,
+          fromStatus: log.fromStatus,
+          timestamp: log.createdAt.toISOString(),
+          actor: log.actor,
+          metadata: log.metadata,
+        })),
+      ],
       compliance: {
         dnd_checked: notification.dndChecked,
         dnd_check_timestamp: notification.dndCheckTimestamp?.toISOString(),
@@ -138,13 +163,31 @@ export class NotificationsService {
     }
   }
 
-  async getDlqEntries(pagination: PaginationDto): Promise<object> {
+  async getDlqEntries(query: DlqQueryDto): Promise<object> {
+    const where = {
+      resolved: false,
+      ...(query.classification && { failureClass: query.classification }),
+      ...(query.reason && {
+        OR: [
+          {
+            failureReason: {
+              contains: query.reason,
+              mode: 'insensitive' as const,
+            },
+          },
+          {
+            lastError: { contains: query.reason, mode: 'insensitive' as const },
+          },
+        ],
+      }),
+    };
+
     const [data, total] = await Promise.all([
       this.prisma.deadLetterQueue.findMany({
-        where: { resolved: false },
+        where,
         orderBy: { createdAt: 'desc' },
-        skip: pagination.skip,
-        take: pagination.limit,
+        skip: query.skip,
+        take: query.limit,
         include: {
           notification: {
             select: {
@@ -156,16 +199,24 @@ export class NotificationsService {
           },
         },
       }),
-      this.prisma.deadLetterQueue.count({ where: { resolved: false } }),
+      this.prisma.deadLetterQueue.count({ where }),
     ]);
 
-    return paginate(data, total, pagination);
+    return paginate(data, total, query);
   }
 
+  /**
+   * Resolves a DLQ entry.
+   *
+   *  - discard: mark resolved, nothing is sent.
+   *  - retry:   put the notification back on its channel queue FIRST, and only
+   *             then mark the entry resolved — a retry that cannot be queued
+   *             must leave the entry open, not silently "resolved".
+   */
   async resolveDlqEntry(
     dlqId: string,
     action: 'retry' | 'discard',
-    resolvedBy: string,
+    resolvedBy = 'operator',
   ): Promise<object> {
     const entry = await this.prisma.deadLetterQueue.findUnique({
       where: { id: dlqId },
@@ -173,6 +224,41 @@ export class NotificationsService {
 
     if (!entry) {
       throw new NotFoundException(`DLQ entry ${dlqId} not found`);
+    }
+    if (entry.resolved) {
+      throw new ConflictException(
+        `DLQ entry ${dlqId} was already resolved (${entry.resolutionAction})`,
+      );
+    }
+
+    if (action === 'retry') {
+      await this.prisma.notification.update({
+        where: { id: entry.notificationId },
+        data: { status: NotificationStatus.RETRYING, updatedAt: new Date() },
+      });
+      const queued = await this.dispatch.publishStored(entry.notificationId);
+
+      if (!queued) {
+        // Restore the terminal state; nothing was resolved.
+        await this.prisma.notification.update({
+          where: { id: entry.notificationId },
+          data: { status: NotificationStatus.DLQ, updatedAt: new Date() },
+        });
+        throw new UnprocessableEntityException(
+          'This notification has no rendered content to resend — fix the cause ' +
+            '(see failure_class CONFIGURATION) or discard it',
+        );
+      }
+
+      await this.prisma.notificationStateLog.create({
+        data: {
+          notificationId: entry.notificationId,
+          fromStatus: NotificationStatus.DLQ,
+          toStatus: NotificationStatus.RETRYING,
+          actor: 'dlq_manual_retry',
+          metadata: { resolvedBy, dlqId },
+        },
+      });
     }
 
     await this.prisma.deadLetterQueue.update({
@@ -185,15 +271,10 @@ export class NotificationsService {
       },
     });
 
-    // If retrying, reset notification status
-    if (action === 'retry') {
-      await this.stateService.transition(
-        entry.notificationId,
-        'RETRYING' as never,
-        'dlq_manual_retry',
-        { resolvedBy, action },
-      );
-    }
+    // Keep the depth gauge (and the HighDLQDepth alert) truthful.
+    this.prometheus.notificationDlqDepth.set(
+      await this.prisma.deadLetterQueue.count({ where: { resolved: false } }),
+    );
 
     return { resolved: true, action, dlqId };
   }
@@ -206,7 +287,7 @@ export class NotificationsService {
    */
   async eraseUserData(userId: string): Promise<{
     notifications_scrubbed: number;
-    consent_records_deleted: number;
+    consent_records_retained: number;
     user_anonymised: boolean;
   }> {
     // Scrub personalisation_data from all notifications (retain metadata for analytics)
@@ -222,32 +303,42 @@ export class NotificationsService {
       } as any,
     });
 
-    // Delete consent records
-    const deletedConsent = await this.prisma.consentRecord.deleteMany({
+    // Consent records are NOT deleted. They are legal evidence (spec C3.3) that a
+    // message was permitted, the table is append-only at the database level, and
+    // retaining them is a legal-obligation exception to erasure. They hold no
+    // direct identifiers once the user row is anonymised below: the user id no
+    // longer maps to a person, and contact details and blind indexes are gone.
+    const retainedConsent = await this.prisma.consentRecord.count({
       where: { userId },
     });
 
-    // Anonymise the user record (replace PII with hashed/null values)
-    const anonymisedPhone = `+910000000000`;
-    const anonymisedEmail = `erased_${userId.substring(0, 8)}@anonymised.invalid`;
+    // Anonymise the user record. Contact details are replaced with encrypted,
+    // non-identifying placeholders and the blind indexes are cleared, so the
+    // original phone/email can neither be read nor looked up any more (and the
+    // erased account frees the number for re-registration).
     await this.prisma.user.update({
       where: { id: userId },
       data: {
         name: '[ERASED]',
-        phone: anonymisedPhone,
-        email: anonymisedEmail,
+        isActive: false,
+        phone: this.pii.encrypt('+000000000000'),
+        email: this.pii.encrypt(
+          `erased_${userId.substring(0, 8)}@anonymised.invalid`,
+        ),
+        phoneHash: null,
+        emailHash: null,
       },
     });
 
     this.logger.log(
       `GDPR erasure completed for user ${userId}: ` +
         `${updateResult.count} notifications scrubbed, ` +
-        `${deletedConsent.count} consent records deleted`,
+        `${retainedConsent} consent records retained`,
     );
 
     return {
       notifications_scrubbed: updateResult.count,
-      consent_records_deleted: deletedConsent.count,
+      consent_records_retained: retainedConsent,
       user_anonymised: true,
     };
   }

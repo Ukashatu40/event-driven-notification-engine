@@ -1,4 +1,4 @@
-// scripts/seed-dnd-cache.ts
+// src/database/seeds/seed-dnd-cache.ts
 require('dotenv').config({
   path: require('path').resolve(process.cwd(), '.env'),
 });
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
 
   const dndUsers = await prisma.user.findMany({
     where: { dndStatus: 'REGISTERED' },
-    select: { phone: true },
+    select: { id: true },
   });
 
   const redis = createClient({
@@ -32,19 +32,19 @@ async function main(): Promise<void> {
 
   let count = 0;
   for (const user of dndUsers) {
-    await redis.setEx(`dnd:${user.phone}`, 86400, 'registered');
+    await redis.setEx(`dnd:${user.id}`, 86400, 'registered');
     count++;
   }
 
   // Seed not-registered users too (so cache hits work both ways)
   const nonDndUsers = await prisma.user.findMany({
     where: { dndStatus: 'NOT_REGISTERED' },
-    select: { phone: true },
+    select: { id: true },
     take: 5000,
   });
 
   for (const user of nonDndUsers) {
-    await redis.setEx(`dnd:${user.phone}`, 86400, 'not_registered');
+    await redis.setEx(`dnd:${user.id}`, 86400, 'not_registered');
     count++;
   }
 

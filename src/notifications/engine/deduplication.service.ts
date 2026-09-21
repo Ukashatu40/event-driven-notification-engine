@@ -77,6 +77,73 @@ export class DeduplicationService {
     return { isDuplicate: false };
   }
 
+  /**
+   * Atomically claims the idempotency key and the event fingerprint for
+   * `notificationId` (SET NX). If either is already held by a different
+   * notification, nothing this call took is kept and the original id is
+   * returned, so two concurrent identical requests can never both proceed.
+   * Claiming the same id again is a no-op (safe for Kafka redelivery).
+   */
+  async claim(
+    notificationId: string,
+    idempotencyKey: string | undefined,
+    eventType: string,
+    sourceEntityId: string,
+  ): Promise<DeduplicationResult> {
+    const client = this.redis.getClient();
+    const wanted: Array<{ key: string; ttl: number; reason: string }> = [];
+
+    if (idempotencyKey) {
+      wanted.push({
+        key: REDIS_KEYS.idempotency(idempotencyKey),
+        ttl: TTL.IDEMPOTENCY,
+        reason: 'IDEMPOTENCY_KEY_DUPLICATE',
+      });
+    }
+    wanted.push({
+      key: REDIS_KEYS.dedup(
+        generateEventFingerprint(eventType, sourceEntityId),
+      ),
+      ttl: TTL.DEDUP,
+      reason: 'FINGERPRINT_DUPLICATE',
+    });
+
+    const taken: string[] = [];
+    for (const { key, ttl, reason } of wanted) {
+      const ok = await client.set(key, notificationId, 'EX', ttl, 'NX');
+      if (ok === 'OK') {
+        taken.push(key);
+        continue;
+      }
+      const holder = await client.get(key);
+      if (holder === notificationId) continue; // our own earlier claim
+      if (taken.length) await client.del(...taken);
+      return {
+        isDuplicate: true,
+        existingNotificationId: holder ?? undefined,
+        reason,
+      };
+    }
+    return { isDuplicate: false };
+  }
+
+  /** Gives a claim back (e.g. the event could not be published). */
+  async release(
+    notificationId: string,
+    idempotencyKey: string | undefined,
+    eventType: string,
+    sourceEntityId: string,
+  ): Promise<void> {
+    const client = this.redis.getClient();
+    const keys = [
+      ...(idempotencyKey ? [REDIS_KEYS.idempotency(idempotencyKey)] : []),
+      REDIS_KEYS.dedup(generateEventFingerprint(eventType, sourceEntityId)),
+    ];
+    for (const key of keys) {
+      if ((await client.get(key)) === notificationId) await client.del(key);
+    }
+  }
+
   async register(
     notificationId: string,
     idempotencyKey: string | undefined,

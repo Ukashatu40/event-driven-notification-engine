@@ -40,3 +40,26 @@ export function generateIdempotencyKey(
   const raw = `${userId}:${eventType}:${eventId}`;
   return createHash('sha256').update(raw).digest('hex');
 }
+
+/**
+ * The "source entity" an event is deduplicated on, scoped to the user.
+ *
+ * - price/market events → the symbol (500 duplicate RELIANCE alerts → 1)
+ * - order events → the order id
+ * - payments → the provider reference
+ * - anything else → the event's own id
+ *
+ * The last fallback matters: it must identify THIS event. A constant here
+ * would make any two same-type events for a user inside the dedup window
+ * (e.g. two deposits, two margin calls) look like duplicates and silently drop
+ * the second one. Exact repeats are still caught by the idempotency key.
+ */
+export function dedupSourceEntity(
+  userId: string,
+  payload: Record<string, unknown>,
+  eventId: string,
+): string {
+  const entity =
+    payload['symbol'] ?? payload['order_id'] ?? payload['reference'] ?? eventId;
+  return `${userId}:${String(entity)}`;
+}

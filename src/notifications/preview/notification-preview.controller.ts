@@ -6,6 +6,7 @@ import {
   NotificationPreview,
 } from './notification-preview.service';
 import { PreviewNotificationDto } from '../dto/preview-notification.dto';
+import { Roles } from '../../api/decorators/roles.decorator';
 
 @ApiTags('notifications')
 @ApiBearerAuth('JWT')
@@ -13,6 +14,7 @@ import { PreviewNotificationDto } from '../dto/preview-notification.dto';
 export class NotificationPreviewController {
   constructor(private readonly previewService: NotificationPreviewService) {}
 
+  @Roles('ADMIN', 'OPERATOR', 'SERVICE')
   @Post('preview')
   @ApiOperation({
     summary: 'Preview a notification without sending it',

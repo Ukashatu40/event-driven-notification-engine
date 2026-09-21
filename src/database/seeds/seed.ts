@@ -1,4 +1,4 @@
-// scripts/seed.ts
+// src/database/seeds/seed.ts
 // dotenv must be the very first thing — before any other import
 // Use require() to guarantee execution order
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -9,17 +9,29 @@ require('dotenv').config({
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { syntheticConsentRows } from './synthetic-consent';
+import { blindIndex, encryptPii } from '../../shared/utils/pii-masker.util';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter }); // Option mapping is required here
+
+// Same keys the app uses (PII_ENCRYPTION_KEY / PII_HASH_KEY) so seeded rows are
+// encrypted exactly like production rows.
+const PII_KEY = Buffer.from(process.env.PII_ENCRYPTION_KEY ?? '', 'hex');
+const HASH_KEY = Buffer.from(process.env.PII_HASH_KEY ?? '', 'utf8');
+if (PII_KEY.length !== 32 || HASH_KEY.length < 32) {
+  throw new Error(
+    'Set PII_ENCRYPTION_KEY (64 hex chars) and PII_HASH_KEY (>=32 chars) in .env',
+  );
+}
 
 const LANGUAGES = ['EN', 'HI', 'MR', 'TA', 'TE'] as const;
 const ACCOUNT_TYPES = ['BASIC', 'PREMIUM', 'HNI'] as const;
 const RISK_PROFILES = ['CONSERVATIVE', 'MODERATE', 'AGGRESSIVE'] as const;
 
 function randomFrom<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]!;
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 function generatePhone(index: number): string {
@@ -39,8 +51,10 @@ async function seedUsers(count: number): Promise<void> {
     const user = await prisma.user.create({
       data: {
         name: `Test User ${i + 1}`,
-        email: generateEmail(i + 1),
-        phone: generatePhone(i + 1),
+        email: encryptPii(generateEmail(i + 1), PII_KEY),
+        emailHash: blindIndex(`email:${generateEmail(i + 1)}`, HASH_KEY),
+        phone: encryptPii(generatePhone(i + 1), PII_KEY),
+        phoneHash: blindIndex(`phone:${generatePhone(i + 1)}`, HASH_KEY),
         language: randomFrom(LANGUAGES),
         timezone: 'Asia/Kolkata',
         accountType: randomFrom(ACCOUNT_TYPES),
@@ -49,6 +63,9 @@ async function seedUsers(count: number): Promise<void> {
         quietHoursStart: '21:00',
         quietHoursEnd: '08:00',
       },
+    });
+    await prisma.consentRecord.createMany({
+      data: syntheticConsentRows(user.id),
     });
 
     const categories = ['TXNX', 'RISK', 'SIPX', 'MKTX', 'REGX'];

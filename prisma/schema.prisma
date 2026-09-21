@@ -12,10 +12,16 @@ datasource db {
 // ─────────────────────────────────────────
 model User {
   id                  String    @id @default(uuid()) @db.Uuid
-  email               String    @unique @db.VarChar(255)
-  phone               String    @unique @db.VarChar(20)
+  // phone/email are stored AES-256-GCM encrypted ("enc:v1:...", see PiiService).
+  // Uniqueness and lookups go through the HMAC blind indexes below, because a
+  // randomised ciphertext can be neither unique-constrained nor searched.
+  email               String    @db.Text
+  phone               String    @db.Text
+  emailHash           String?   @unique @db.VarChar(64)
+  phoneHash           String?   @unique @db.VarChar(64)
   name                String    @db.VarChar(255)
   language            Language  @default(EN)
+  market              Market    @default(IN)
   timezone            String    @default("Asia/Kolkata") @db.VarChar(50)
   accountType         AccountType @default(BASIC)
   riskProfile         RiskProfile @default(MODERATE)
@@ -32,8 +38,6 @@ model User {
   segments            UserSegmentMembership[]
   consentRecords      ConsentRecord[]
 
-  @@index([phone])
-  @@index([email])
   @@index([accountType])
   @@map("users")
 }
@@ -72,6 +76,8 @@ model Notification {
   dndResult           String?             @db.VarChar(20)
   classification      MessageClassification @default(TRANSACTIONAL)
   regulatoryOverride  Boolean             @default(false)
+  // The consent record that authorised this send (promotional SMS/email, any WhatsApp)
+  consentRecordId     String?             @db.Uuid
   createdAt           DateTime            @default(now()) @db.Timestamptz
   updatedAt           DateTime            @updatedAt @db.Timestamptz
 
@@ -143,6 +149,8 @@ model DeadLetterQueue {
   failureReason     String    @db.Text
   retryCount        Int
   lastError         String?   @db.Text
+  // TRANSIENT | PERMANENT | CONFIGURATION — see classifyFailure()
+  failureClass      String    @default("TRANSIENT") @db.VarChar(15)
   resolved          Boolean   @default(false)
   resolvedBy        String?   @db.VarChar(50)
   resolvedAt        DateTime? @db.Timestamptz
@@ -152,6 +160,7 @@ model DeadLetterQueue {
   notification      Notification @relation(fields: [notificationId], references: [id])
 
   @@index([resolved, createdAt])
+  @@index([resolved, failureClass])
   @@map("dead_letter_queue")
 }
 
@@ -244,6 +253,7 @@ model ConsentRecord {
 
   @@index([userId, channel])
   @@index([grantedAt])
+  // (userId, channel, grantedAt DESC) is created in SQL — see migration 20260922000001
   @@map("consent_records")
 }
 
@@ -283,6 +293,11 @@ enum NotificationStatus {
   DLQ
   DEDUPLICATED
   BOUNCED
+  // Blocked at dispatch: no valid consent on record (see ConsentService)
+  NO_CONSENT
+  // Held for a digest / delivered inside one
+  DIGEST_PENDING
+  DIGESTED
 }
 
 enum MessageClassification {
@@ -296,6 +311,16 @@ enum Language {
   MR
   TA
   TE
+  // Nigerian languages: Pidgin, Hausa, Yoruba, Igbo
+  PCM
+  HA
+  YO
+  IG
+}
+
+enum Market {
+  IN
+  NG
 }
 
 enum AccountType {

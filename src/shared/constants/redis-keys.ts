@@ -27,7 +27,8 @@ export const REDIS_KEYS = {
   userEngagement: (userId: string) => `user:${userId}:engagement`,
 
   // DND cache
-  dndStatus: (phoneNumber: string) => `dnd:${phoneNumber}`,
+  // Keyed by user id, not phone number: no PII in Redis keys.
+  dndStatus: (userId: string) => `dnd:${userId}`,
 
   // Circuit breaker
   circuitBreakerState: (provider: string) => `cb:${provider}:state`,
@@ -38,6 +39,16 @@ export const REDIS_KEYS = {
   // Quiet hours queue (sorted set, score = unix delivery timestamp)
   quietQueue: (userId: string) => `notif:quiet:${userId}`,
 
+  // Deferred releases (quiet hours / send-time optimisation):
+  // sorted set, score = unix release time, member = JSON {id, channels}
+  scheduledRelease: 'notif:scheduled',
+
+  // Digest buckets: sorted set of notification ids per (user, source), and a
+  // global "due" set whose member is "<userId>|<source>", scored by flush time.
+  digestBucket: (userId: string, source: string) =>
+    `notif:digest:${userId}:${source}`,
+  digestDue: 'notif:digest:due',
+
   // Rate limiting (sliding window)
   rateLimit: (identifier: string, endpoint: string, windowStart: number) =>
     `rl:${identifier}:${endpoint}:${windowStart}`,
@@ -45,6 +56,10 @@ export const REDIS_KEYS = {
   // Analytics real-time counters
   analyticsCounter: (metric: string, window: string) =>
     `analytics:${metric}:${window}`,
+
+  // Refresh-token rotation: jti → token family; revoked families
+  authRefresh: (jti: string) => `auth:refresh:${jti}`,
+  authRevokedFamily: (family: string) => `auth:revoked:${family}`,
 
   // Send-time optimisation — per-user hourly open rates
   sendTimeScores: (userId: string) => `sto:${userId}:hourly_scores`,

@@ -1,7 +1,6 @@
 // src/notifications/routing/routing-engine.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { PreferenceResolverService } from '../../preferences/preference-resolver.service';
-import { DndService } from '../../compliance/dnd/dnd.service';
 import { FrequencyCapService } from '../../compliance/frequency-cap/frequency-cap.service';
 import { QuietHoursService } from '../../compliance/quiet-hours/quiet-hours.service';
 import { PrometheusService } from '../../health/prometheus/prometheus.service';
@@ -11,18 +10,30 @@ import {
   CHANNEL_COST_PAISA,
   CHANNEL_DELIVERY_RATE,
 } from '../../shared/constants/channels';
-import { CRITICAL_EVENTS } from '../../shared/constants/event-types';
+import {
+  CRITICAL_EVENTS,
+  REGULATORY_MANDATORY_EVENTS,
+} from '../../shared/constants/event-types';
 
 export interface RoutingDecision {
   channels: Channel[];
   suppressedChannels: Array<{ channel: Channel; reason: string }>;
   quietHoursDelay?: { deliverAt: string };
   regulatoryOverride: boolean;
+  /**
+   * Policies a CRITICAL event skipped. Recorded in the notification's state log
+   * so every bypass is auditable (spec A6.2 / A6.3: "with an audit log entry").
+   */
+  policyBypasses?: string[];
+  /**
+   * Set when the user asked for this category as an hourly/daily digest. The
+   * notification is held and delivered inside a digest instead of on its own.
+   */
+  digest?: { mode: 'HOURLY' | 'DAILY' };
 }
 
 interface UserContext {
   userId: string;
-  phone: string;
   accountType: string;
   timezone: string;
 }
@@ -41,10 +52,11 @@ interface UserContext {
  *
  * Processing order:
  * 1. Resolve preferences (what channels does this user want?)
- * 2. DND check (SMS only — last moment before dispatch)
- * 3. Frequency cap check
- * 4. Quiet hours check
- * 5. Score and rank surviving channels
+ * 2. Frequency cap check
+ * 3. Quiet hours check
+ * 4. Score and rank surviving channels
+ *
+ * DND is enforced at dispatch, not here (ADR-004).
  */
 @Injectable()
 export class RoutingEngineService {
@@ -52,7 +64,6 @@ export class RoutingEngineService {
 
   constructor(
     private readonly preferenceResolver: PreferenceResolverService,
-    private readonly dndService: DndService,
     private readonly frequencyCapService: FrequencyCapService,
     private readonly quietHoursService: QuietHoursService,
     private readonly prometheus: PrometheusService,
@@ -74,26 +85,31 @@ export class RoutingEngineService {
 
     let candidateChannels = resolved.channels;
 
-    // Step 2 — DND check (SMS only)
-    const channelsAfterDnd: Channel[] = [];
-    for (const channel of candidateChannels) {
-      const dndResult = await this.dndService.check(
-        userContext.userId,
-        userContext.phone,
-        eventType,
-        channel,
-      );
-
-      if (!dndResult.allowed) {
-        suppressedChannels.push({ channel, reason: dndResult.reason });
-        this.prometheus.recordDndBlock('PROMOTIONAL');
-      } else {
-        channelsAfterDnd.push(channel);
-      }
+    // Digest preference (spec Day 5). Only for events that are neither CRITICAL
+    // nor regulator-mandated: a margin call or a trade confirmation is never
+    // held back to be batched, whatever the user picked. Caps and quiet hours are
+    // deliberately skipped — the digest itself is what gets sent later, and it
+    // respects quiet hours when it is flushed.
+    const digestable =
+      !CRITICAL_EVENTS.includes(eventType) &&
+      !REGULATORY_MANDATORY_EVENTS.includes(eventType);
+    if (
+      digestable &&
+      candidateChannels.length > 0 &&
+      (resolved.digestMode === 'HOURLY' || resolved.digestMode === 'DAILY')
+    ) {
+      return {
+        channels: [],
+        suppressedChannels: [],
+        regulatoryOverride: false,
+        digest: { mode: resolved.digestMode },
+      };
     }
-    candidateChannels = channelsAfterDnd;
 
-    // Step 3 — Frequency cap check
+    // DND is deliberately NOT evaluated here. It is checked at dispatch, the
+    // last moment before the SMS leaves the system (ADR-004 / DeliveryService).
+
+    // Step 2 — Frequency cap check
     const channelsAfterCap: Channel[] = [];
     for (const channel of candidateChannels) {
       const capResult = await this.frequencyCapService.check(
@@ -111,11 +127,13 @@ export class RoutingEngineService {
     }
     candidateChannels = channelsAfterCap;
 
-    // Step 4 — Quiet hours check
-    const quietResult = await this.quietHoursService.check(
-      userContext.userId,
-      eventType,
-    );
+    // Step 3 — Quiet hours check
+    // Nothing left after the caps → nothing to defer; the engine records the
+    // notification as CAPPED instead of parking an empty send in the quiet queue.
+    const quietResult =
+      candidateChannels.length > 0
+        ? await this.quietHoursService.check(userContext.userId, eventType)
+        : { suppressed: false as const };
 
     if (quietResult.suppressed) {
       // CRITICAL events already bypass in QuietHoursService
@@ -131,7 +149,7 @@ export class RoutingEngineService {
       };
     }
 
-    // Step 5 — Score and rank remaining channels
+    // Step 4 — Score and rank remaining channels
     const scoredChannels = this.scoreChannels(
       candidateChannels,
       eventType,
@@ -147,6 +165,9 @@ export class RoutingEngineService {
       channels: scoredChannels.map((c) => c.channel),
       suppressedChannels,
       regulatoryOverride: resolved.regulatoryOverride,
+      ...(CRITICAL_EVENTS.includes(eventType) && {
+        policyBypasses: ['frequency_cap', 'quiet_hours'],
+      }),
     };
   }
 
