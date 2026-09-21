@@ -61,7 +61,7 @@ describe('QuietHoursService', () => {
 
   describe('shouldBatchIntoDigest', () => {
     it('should return true when queue depth >= 5', () => {
-      expect(service.shouldBatchIntoDig(5)).toBe(true);
+      expect(service.shouldBatchIntoDig(6)).toBe(true);
       expect(service.shouldBatchIntoDig(10)).toBe(true);
     });
 

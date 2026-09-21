@@ -13,6 +13,8 @@ const config: Config = {
     '!src/main.ts',
     '!src/**/*.module.ts',
     '!src/**/*.dto.ts',
+    '!src/database/seeds/**', // one-off CLI scripts, exercised by running them
+    '!src/**/index.ts', // barrels
     '!src/infrastructure/**',
   ],
   coverageDirectory: 'coverage',
@@ -28,10 +30,14 @@ const config: Config = {
     '^@analytics/(.*)$': '<rootDir>/src/analytics/$1',
     '^@infrastructure/(.*)$': '<rootDir>/src/infrastructure/$1',
   },
+  // Spec Day 13: minimum 80% coverage. Ratcheted up as coverage improved —
+  // lowering these is a deliberate, reviewable act, not a quiet way to go green.
   coverageThreshold: {
     global: {
-      lines: 20,
-      functions: 20,
+      lines: 80,
+      statements: 80,
+      functions: 75,
+      branches: 60,
     },
   },
 };

@@ -62,9 +62,7 @@ describe('CircuitBreakerService', () => {
         .mockResolvedValueOnce(String(Date.now() - 120_000)) // 2 min ago > 60s threshold
         .mockResolvedValueOnce('OPEN'); // for transition check
       jest.mocked(mockRedis.set).mockResolvedValue(undefined);
-      jest
-        .mocked(mockPrismaRaw.providerHealth.upsert)
-        .mockResolvedValue({} as never);
+      jest.mocked(mockPrismaRaw.providerHealth.upsert).mockResolvedValue({});
 
       const result = await service.allowRequest('msg91');
       expect(result).toBe(true);
@@ -83,9 +81,7 @@ describe('CircuitBreakerService', () => {
       jest.mocked(mockRedis.get).mockResolvedValue('CLOSED');
       jest.mocked(mockRedis.increment).mockResolvedValue(5); // threshold reached
       jest.mocked(mockRedis.set).mockResolvedValue(undefined);
-      jest
-        .mocked(mockPrismaRaw.providerHealth.upsert)
-        .mockResolvedValue({} as never);
+      jest.mocked(mockPrismaRaw.providerHealth.upsert).mockResolvedValue({});
 
       await service.recordFailure('msg91');
 
@@ -112,9 +108,7 @@ describe('CircuitBreakerService', () => {
       jest.mocked(mockRedis.increment).mockResolvedValue(2); // meets success threshold
       jest.mocked(mockRedis.del).mockResolvedValue(undefined);
       jest.mocked(mockRedis.set).mockResolvedValue(undefined);
-      jest
-        .mocked(mockPrismaRaw.providerHealth.upsert)
-        .mockResolvedValue({} as never);
+      jest.mocked(mockPrismaRaw.providerHealth.upsert).mockResolvedValue({});
 
       await service.recordSuccess('msg91');
 

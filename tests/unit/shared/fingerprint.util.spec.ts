@@ -1,5 +1,6 @@
 // tests/unit/shared/fingerprint.util.spec.ts
 import {
+  dedupSourceEntity,
   generateEventFingerprint,
   // generateNotificationFingerprint,
   generateIdempotencyKey,
@@ -126,5 +127,35 @@ describe('sanitizeForLog', () => {
 
   it('should handle empty object', () => {
     expect(sanitizeForLog({})).toEqual({});
+  });
+});
+
+describe('dedupSourceEntity', () => {
+  it('uses the symbol so 500 duplicate price alerts for one user collapse', () => {
+    expect(dedupSourceEntity('u1', { symbol: 'RELIANCE' }, 'EVT-1')).toBe(
+      'u1:RELIANCE',
+    );
+    expect(dedupSourceEntity('u1', { symbol: 'RELIANCE' }, 'EVT-2')).toBe(
+      'u1:RELIANCE',
+    );
+  });
+
+  it('is scoped per user', () => {
+    expect(dedupSourceEntity('u1', { symbol: 'X' }, 'e')).not.toBe(
+      dedupSourceEntity('u2', { symbol: 'X' }, 'e'),
+    );
+  });
+
+  it('prefers order id, then payment reference', () => {
+    expect(
+      dedupSourceEntity('u', { order_id: 'O-1', reference: 'R' }, 'e'),
+    ).toBe('u:O-1');
+    expect(dedupSourceEntity('u', { reference: 'R-9' }, 'e')).toBe('u:R-9');
+  });
+
+  it('falls back to the event id so two distinct events are never merged (two deposits, two margin calls)', () => {
+    expect(dedupSourceEntity('u', {}, 'EVT-A')).not.toBe(
+      dedupSourceEntity('u', {}, 'EVT-B'),
+    );
   });
 });

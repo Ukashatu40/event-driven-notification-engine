@@ -173,4 +173,55 @@ describe('FrequencyCapService', () => {
       expect(mockRedis.set).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('check — regulator-mandated events are not swallowed as "too frequent"', () => {
+    it('a second TXNX-005 deposit alert inside the 15-minute cooldown is NOT capped', async () => {
+      jest.mocked(mockRedis.exists).mockResolvedValue(true); // cooldown key present
+      jest.mocked(mockRedis.get).mockResolvedValue(null);
+      jest.mocked(mockRedis.increment).mockResolvedValue(1);
+
+      const result = await service.check('u1', 'TXNX-005', 'sms');
+
+      expect(result.capped).toBe(false);
+      expect(mockRedis.exists).not.toHaveBeenCalled(); // cooldown never consulted
+    });
+
+    it('the same cooldown DOES still cap a non-mandated repeat (price alert)', async () => {
+      jest.mocked(mockRedis.exists).mockResolvedValue(true);
+      jest.mocked(mockRedis.ttl).mockResolvedValue(600);
+
+      const result = await service.check('u1', 'MKTX-001', 'push');
+
+      expect(result.capped).toBe(true);
+    });
+
+    it('a mandated event still respects the global daily cap', async () => {
+      jest.mocked(mockRedis.exists).mockResolvedValue(false);
+      // every counter reports the user is far over
+      jest.mocked(mockRedis.get).mockResolvedValue('999');
+      jest.mocked(mockRedis.increment).mockResolvedValue(999);
+
+      const result = await service.check('u1', 'TXNX-001', 'sms');
+
+      expect(result.capped).toBe(true);
+    });
+  });
+
+  describe('record — one event is one notification', () => {
+    it('advances every counter for the first channel', async () => {
+      await service.record('u1', 'MKTX-001', 'sms');
+      expect(mockRedis.increment).toHaveBeenCalledTimes(3); // channel + global + category
+      expect(mockRedis.set).toHaveBeenCalledTimes(1); // cooldown
+    });
+
+    it('advances only the per-channel counter for further channels of the same event', async () => {
+      await service.record('u1', 'MKTX-001', 'push', false);
+      expect(mockRedis.increment).toHaveBeenCalledTimes(1);
+      expect(mockRedis.increment).toHaveBeenCalledWith(
+        expect.stringContaining('channel:push'),
+        expect.any(Number),
+      );
+      expect(mockRedis.set).not.toHaveBeenCalled();
+    });
+  });
 });
