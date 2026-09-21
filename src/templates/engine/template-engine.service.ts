@@ -1,12 +1,13 @@
 // src/templates/engine/template-engine.service.ts
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as Handlebars from 'handlebars';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { PersonalisationService } from './personalisation.service';
 import { SmsTruncationService } from './sms-truncation.service';
 import { type SupportedLocale } from '../../shared/utils/currency.util';
 import { type Channel } from '../../shared/constants/channels';
+import { NG_LOCALISATIONS } from '../definitions/ng-localisations';
 
 export interface TemplateDefinition {
   templateId: string;
@@ -62,6 +63,16 @@ export class TemplateEngineService implements OnModuleInit {
     private readonly personalisation: PersonalisationService,
     private readonly smsTruncation: SmsTruncationService,
   ) {}
+
+  /**
+   * True when the event's template defines content for this channel. The
+   * engine uses it to skip channels a template cannot serve (e.g. MKTX-003 is
+   * push/in-app only) instead of dead-lettering a send that can never render.
+   */
+  supportsChannel(eventType: string, channel: Channel): boolean {
+    const template = this.templates.get(`${eventType}-v1`);
+    return template ? Boolean(template.channels[channel]) : false;
+  }
 
   onModuleInit(): void {
     this.registerHelpers();
@@ -126,7 +137,7 @@ export class TemplateEngineService implements OnModuleInit {
     ctx: Record<string, unknown>,
   ): RenderResult {
     const compiled = this.compile(def.body);
-    const raw = compiled(ctx);
+    const raw = this.smsTruncation.toSmsSafe(compiled(ctx));
     const body = this.smsTruncation.truncate(raw);
 
     return {
@@ -251,31 +262,113 @@ export class TemplateEngineService implements OnModuleInit {
       this.templates.set(def.templateId, def);
     }
 
-    // Override with file-based definitions if they exist
+    // Override with file-based definitions if they exist. Each file is loaded on
+    // its own: one malformed file must not stop the others (it used to abort the
+    // whole directory and silently fall back to the inline copies). Leading
+    // `//` comment lines are tolerated so a file can say where it came from.
     if (existsSync(definitionsDir)) {
-      try {
-        const files = require('fs')
-          .readdirSync(definitionsDir)
-          .filter((f: string) => f.endsWith('.json'));
-
-        for (const file of files) {
-          const content = readFileSync(join(definitionsDir, file), 'utf-8');
-          const def = JSON.parse(content) as TemplateDefinition;
+      let loaded = 0;
+      for (const file of readdirSync(definitionsDir)) {
+        if (!file.endsWith('.json')) continue;
+        try {
+          const raw = readFileSync(join(definitionsDir, file), 'utf-8');
+          const def = JSON.parse(
+            raw.replace(/^\s*\/\/.*$/gm, ''),
+          ) as TemplateDefinition;
           this.templates.set(def.templateId, def);
+          loaded++;
+        } catch (err) {
+          this.logger.error(
+            `Skipping invalid template definition ${file}: ${(err as Error).message}`,
+          );
         }
-
-        this.logger.log(`Loaded ${files.length} templates from disk`);
-      } catch (err) {
-        this.logger.warn(
-          `Could not load templates from disk: ${(err as Error).message}`,
-        );
       }
+      this.logger.log(`Loaded ${loaded} template definition file(s) from disk`);
+    }
+
+    // System templates: not business events, so not in the templates table.
+    const digest = this.digestTemplate();
+    this.templates.set(digest.templateId, digest);
+
+    this.applyLocalisations(NG_LOCALISATIONS);
+  }
+
+  /**
+   * The digest ("N updates") notification. Delivered on push and in-app only: no
+   * SMS cost, no DND or consent gate. `items` holds one already-rendered line per
+   * folded notification (at most 5) and `more` how many did not fit.
+   */
+  private digestTemplate(): TemplateDefinition {
+    const body =
+      '{{#each items}}• {{text}}{{#unless @last}}\n{{/unless}}{{/each}}' +
+      '{{#if more}}\n… +{{more}}{{/if}}';
+    return {
+      templateId: 'DIGEST-v1',
+      eventType: 'DIGEST',
+      version: 1,
+      channels: {
+        push: {
+          title: '{{count}} updates from {{app_name}}',
+          body,
+          data: { action: 'open_inbox' },
+        },
+        in_app: {
+          title: '{{count}} updates',
+          body,
+          action: 'open_inbox',
+        },
+      },
+      localisations: {
+        hi: {
+          push: { title: '{{app_name}} से {{count}} अपडेट', body },
+          in_app: { title: '{{count}} अपडेट', body },
+        },
+      },
+    };
+  }
+
+  /**
+   * Merges externally-maintained localisations (e.g. the Nigerian languages)
+   * into the registry without touching the template definitions themselves.
+   * Existing entries for the same locale/channel are overridden field by field.
+   */
+  private applyLocalisations(
+    extra: Record<
+      string,
+      Record<string, Record<string, Record<string, string>>>
+    >,
+  ): void {
+    for (const [templateId, byLocale] of Object.entries(extra)) {
+      const def = this.templates.get(templateId);
+      if (!def) continue;
+
+      const merged = (def.localisations ?? {}) as Record<
+        string,
+        Record<string, Record<string, string>>
+      >;
+      for (const [locale, byChannel] of Object.entries(byLocale)) {
+        merged[locale] ??= {};
+        for (const [channel, fields] of Object.entries(byChannel)) {
+          merged[locale][channel] = { ...merged[locale][channel], ...fields };
+        }
+      }
+      def.localisations = merged;
     }
   }
 
   private loadLocales(): void {
     const localesDir = join(process.cwd(), 'src', 'templates', 'locales');
-    const supported: SupportedLocale[] = ['en', 'hi', 'mr', 'ta', 'te'];
+    const supported: SupportedLocale[] = [
+      'en',
+      'hi',
+      'mr',
+      'ta',
+      'te',
+      'pcm',
+      'ha',
+      'yo',
+      'ig',
+    ];
 
     for (const locale of supported) {
       const filePath = join(localesDir, `${locale}.json`);
@@ -865,17 +958,19 @@ export class TemplateEngineService implements OnModuleInit {
         version: 1,
         channels: {
           sms: {
-            body: 'Funds Deposited: {{amount}} from {{source}}. Available balance: {{available_balance}}. -{{app_name}}',
+            body:
+              'Funds Deposited: {{amount}} from {{source}}.' +
+              '{{#if available_balance}} Available balance: {{available_balance}}.{{/if}} -{{app_name}}',
             senderId: 'WLTHBR',
           },
           push: {
             title: '✅ Funds Deposited',
-            body: '{{amount}} credited. Balance: {{available_balance}}',
+            body: '{{amount}} credited.{{#if available_balance}} Balance: {{available_balance}}{{/if}}',
             data: { action: 'open_wallet' },
           },
           in_app: {
             title: 'Funds Deposited',
-            body: '{{amount}} from {{source}} — Balance {{available_balance}}',
+            body: '{{amount}} from {{source}}{{#if available_balance}} — Balance {{available_balance}}{{/if}}',
             action: 'open_wallet',
           },
           whatsapp: {

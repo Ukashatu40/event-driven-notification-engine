@@ -1,5 +1,5 @@
 // src/templates/engine/ab-testing.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { createHash } from 'crypto';
@@ -24,8 +24,6 @@ export interface TemplateVariant {
  */
 @Injectable()
 export class AbTestingService {
-  private readonly logger = new Logger(AbTestingService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
@@ -39,7 +37,6 @@ export class AbTestingService {
     userId: string,
     eventType: string,
   ): Promise<TemplateVariant> {
-    this.logger.debug('Debugging');
     const variants = await (this.prisma as any).template.findMany({
       where: {
         eventType,

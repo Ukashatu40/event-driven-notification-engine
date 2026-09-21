@@ -1,4 +1,3 @@
-// src/templates/definitions/RISK-001.template.json
 {
   "templateId": "RISK-001-v1",
   "eventType": "RISK-001",
@@ -24,11 +23,14 @@
     "push": {
       "title": "⚠️ Margin Call Warning",
       "body": "Shortfall of {{shortfall_amount}}. Deadline {{deadline}}.",
-      "data": { "action": "open_margin_dashboard", "priority": "1" }
+      "data": {
+        "action": "open_margin_dashboard",
+        "priority": "1"
+      }
     },
     "email": {
       "subject": "URGENT: Margin Call — Action Required by {{deadline}}",
-      "textBody": "Dear {{user_name}}, your account has a margin shortfall of {{shortfall_amount}}. Required margin: {{required_margin}}. Current margin: {{current_margin}}. Please add funds before {{deadline}}."
+      "textBody": "Dear {{user_name}}, your account has a margin shortfall of {{shortfall_amount}}. Required margin: {{required_margin}}. Current margin: {{current_margin}}. Please add funds before {{deadline}} to avoid auto square-off at {{auto_square_off_time}}."
     },
     "in_app": {
       "title": "Margin Call Warning",
@@ -39,7 +41,7 @@
   "localisations": {
     "hi": {
       "sms": {
-        "body": "मार्जिन कॉल: कमी {{shortfall_amount}}। डेडलाइन: {{deadline}}। फंड जोड़ें। -{{app_name}}"
+        "body": "मार्जिन कॉल: कमी {{shortfall_amount}}। डेडलाइन: {{deadline}}। फंड जोड़ें या {{auto_square_off_time}} पर पोजीशन स्क्वेयर ऑफ। -{{app_name}}"
       },
       "push": {
         "title": "⚠️ मार्जिन कॉल चेतावनी",
@@ -48,17 +50,17 @@
     },
     "mr": {
       "sms": {
-        "body": "मार्जिन कॉल: तूट {{shortfall_amount}}। मुदत: {{deadline}}। निधी जोडा। -{{app_name}}"
+        "body": "मार्जिन कॉल: तूट {{shortfall_amount}}। मुदत: {{deadline}}। निधी जोडा किंवा {{auto_square_off_time}} ला स्क्वेअर ऑफ। -{{app_name}}"
       }
     },
     "ta": {
       "sms": {
-        "body": "மார்ஜின் கால்: குறைபாடு {{shortfall_amount}}. காலக்கெடு: {{deadline}}. -{{app_name}}"
+        "body": "மார்ஜின் கால்: குறைபாடு {{shortfall_amount}}. காலக்கெடு: {{deadline}}. நிதி சேர்க்கவும். -{{app_name}}"
       }
     },
     "te": {
       "sms": {
-        "body": "మార్జిన్ కాల్: లోటు {{shortfall_amount}}. గడువు: {{deadline}}. -{{app_name}}"
+        "body": "మార్జిన్ కాల్: లోటు {{shortfall_amount}}. గడువు: {{deadline}}. నిధులు జోడించండి. -{{app_name}}"
       }
     }
   }

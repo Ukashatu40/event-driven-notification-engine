@@ -1,4 +1,3 @@
-// src/templates/definitions/TXNX-001.template.json
 {
   "templateId": "TXNX-001-v1",
   "eventType": "TXNX-001",
@@ -20,7 +19,10 @@
     "push": {
       "title": "Buy Order Executed",
       "body": "{{qty}} {{stock_name}} @ {{price}}",
-      "data": { "action": "open_portfolio", "order_id": "{{order_id}}" }
+      "data": {
+        "action": "open_portfolio",
+        "order_id": "{{order_id}}"
+      }
     },
     "email": {
       "subject": "Order Executed: {{qty}} {{stock_name}} @ {{price}}",

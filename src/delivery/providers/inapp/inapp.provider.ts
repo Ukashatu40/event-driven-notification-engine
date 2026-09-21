@@ -33,6 +33,7 @@ export class InAppProvider implements IDeliveryProvider {
     return {
       success: true,
       externalId: `inapp_${notification.notificationId}`,
+      receipt: 'immediate' as const,
       provider: this.providerName,
       latencyMs: Date.now() - start,
     };
