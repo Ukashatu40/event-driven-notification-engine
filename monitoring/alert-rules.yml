@@ -1,0 +1,77 @@
+# monitoring/alert-rules.yml — spec Section A11.2
+#
+# Every expression uses a metric the application really emits (see
+# src/health/prometheus/prometheus.service.ts). Validate with:
+#   docker run --rm --entrypoint promtool -v $PWD/monitoring:/m prom/prometheus:v2.49.0 check rules /m/alert-rules.yml
+groups:
+  - name: notification-engine-critical
+    rules:
+      - alert: HighDLQDepth
+        expr: notification_dlq_depth > 100
+        for: 5m
+        labels: { severity: critical, action: page-oncall }
+        annotations:
+          summary: "DLQ depth is {{ $value }} (> 100 for 5m)"
+          description: "Dead-lettered notifications are piling up. Inspect GET /api/v1/dlq?classification=CONFIGURATION first — those need a fix, not a retry."
+
+      - alert: DeliveryLatencySpike
+        # CRITICAL events are priority 1
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(notification_delivery_latency_seconds_bucket{priority="1"}[5m]))
+          ) > 30
+        for: 2m
+        labels: { severity: critical, action: page-oncall }
+        annotations:
+          summary: "P99 delivery latency for CRITICAL events is {{ $value | humanizeDuration }} (> 30s)"
+
+      - alert: DNDViolationDetected
+        # Tripwire counter: incremented if a promotional SMS to a DND-registered
+        # number is ever allowed by the policy check. Must always be zero.
+        expr: increase(dnd_violations_detected_total[5m]) > 0
+        labels: { severity: critical, action: page-oncall-and-notify-compliance }
+        annotations:
+          summary: "DND violation detected ({{ $value }} in 5m)"
+          description: "A promotional SMS reached the send path for a DND-registered number. The send was refused, but the policy check has a bug. Notify compliance."
+
+  - name: notification-engine-high
+    rules:
+      - alert: ProviderCircuitOpen
+        expr: delivery_provider_circuit_state == 2
+        for: 30s
+        labels: { severity: high, action: notify-ops-channel }
+        annotations:
+          summary: "Circuit breaker OPEN for {{ $labels.provider }} ({{ $labels.channel }})"
+
+      - alert: HighFailureRate
+        expr: |
+          sum(rate(notification_delivery_total{status="failed"}[10m]))
+            /
+          clamp_min(sum(rate(notification_delivery_total[10m])), 1e-9)
+          > 0.05
+        for: 5m
+        labels: { severity: high, action: notify-ops-channel }
+        annotations:
+          summary: "Delivery failure rate is {{ $value | humanizePercentage }} (> 5% over 10m)"
+
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_lag > 10000
+        for: 5m
+        labels: { severity: high, action: notify-ops-channel }
+        annotations:
+          summary: "Kafka lag {{ $value }} on {{ $labels.topic }}/{{ $labels.partition }} (group {{ $labels.consumer_group }})"
+
+  - name: notification-engine-medium
+    rules:
+      - alert: FrequencyCapExhaustion
+        # Approximation of "> 50% of users hitting the daily cap": there is no
+        # per-user gauge, so compare daily-cap hits with events received over 1h.
+        expr: |
+          sum(increase(notification_frequency_cap_hits_total{cap_type="global_daily"}[1h]))
+            /
+          clamp_min(sum(increase(notification_events_received_total[1h])), 1)
+          > 0.5
+        for: 10m
+        labels: { severity: medium, action: review-notification-strategy }
+        annotations:
+          summary: "More than half of recent events are being stopped by the global daily cap"
