@@ -41,6 +41,11 @@ export class QuietHoursService {
       return { suppressed: false };
     }
 
+    return this.checkWindow(userId);
+  }
+
+  /** Is the user inside their quiet window right now? (No event-type bypass.) */
+  async checkWindow(userId: string): Promise<QuietHoursResult> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -113,8 +118,9 @@ export class QuietHoursService {
     return this.redis.zcount(REDIS_KEYS.quietQueue(userId), '-inf', '+inf');
   }
 
+  /** Spec A6.3: batch "if count EXCEEDS 5" — six or more, not five. */
   shouldBatchIntoDig(queueDepth: number): boolean {
-    return queueDepth >= this.DIGEST_THRESHOLD;
+    return queueDepth > this.DIGEST_THRESHOLD;
   }
 
   // ── Time helpers ──────────────────────────────────────────────────
@@ -145,6 +151,11 @@ export class QuietHoursService {
     }
 
     return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  }
+
+  /** The next instant the user's quiet window ends (i.e. their "morning"). */
+  nextActiveWindowStart(timezone: string, quietEnd: string): Date {
+    return this.getNextActiveWindowStart(timezone, quietEnd);
   }
 
   private getNextActiveWindowStart(timezone: string, quietEnd: string): Date {

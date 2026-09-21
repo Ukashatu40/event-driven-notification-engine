@@ -5,9 +5,14 @@ import { DndClassifierService } from './dnd/dnd-classifier.service';
 import { ConsentService } from './dnd/consent.service';
 import { FrequencyCapService } from './frequency-cap/frequency-cap.service';
 import { QuietHoursService } from './quiet-hours/quiet-hours.service';
+import { ConsentController } from './consent.controller';
+import { ComplianceAuditController } from './audit/compliance-audit.controller';
+import { ComplianceAuditService } from './audit/compliance-audit.service';
 
 @Module({
+  controllers: [ConsentController, ComplianceAuditController],
   providers: [
+    ComplianceAuditService,
     DndService,
     DndClassifierService,
     ConsentService,
