@@ -12,6 +12,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { ConfigService } from '@nestjs/config';
 import { PrometheusService } from '../health/prometheus/prometheus.service';
+import { WsJwtGuard } from './ws-jwt.guard';
 // import { WsJwtGuard } from './ws-jwt.guard';
 
 export interface NotificationStateEvent {
@@ -39,7 +40,10 @@ export interface NotificationStateEvent {
  */
 @Injectable()
 @WebSocketGateway({
-  cors: { origin: '*' },
+  // Only the configured front-end origins — never '*': this stream carries user ids.
+  cors: {
+    origin: (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(','),
+  },
   namespace: '/dashboard',
 })
 export class DashboardGateway
@@ -54,6 +58,7 @@ export class DashboardGateway
   constructor(
     private readonly configService: ConfigService,
     private readonly prometheus: PrometheusService,
+    private readonly wsGuard: WsJwtGuard,
   ) {
     this.enabled =
       this.configService.get<boolean>('app.features.websocketDashboard') ??
@@ -62,6 +67,18 @@ export class DashboardGateway
 
   handleConnection(client: Socket): void {
     if (!this.enabled) {
+      client.disconnect(true);
+      return;
+    }
+
+    // Guards do not run for connection events, so authenticate here. An
+    // anonymous or wrongly-privileged socket is dropped before it can join any
+    // room, i.e. before it can receive a single event.
+    if (!this.wsGuard.isAuthorized(client.handshake?.auth?.['token'])) {
+      this.logger.warn(
+        `Rejected unauthenticated dashboard client ${client.id}`,
+      );
+      client.emit('error', { message: 'Unauthorized' });
       client.disconnect(true);
       return;
     }

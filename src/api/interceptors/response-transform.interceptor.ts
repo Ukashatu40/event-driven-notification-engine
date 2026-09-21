@@ -7,27 +7,22 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import type { FastifyRequest } from 'fastify';
+import { snakeKeys } from '../../shared/utils/case.util';
 
 /**
- * Wraps all successful responses in a consistent envelope.
- * Error responses are handled by GlobalExceptionFilter.
+ * Serialises successful responses to the documented contract (spec Appendix A):
+ * the bare body with snake_case keys — no `{success, data}` envelope.
+ *
+ * Correlation ids travel in the `x-correlation-id` header (set by the
+ * correlation-id middleware), not in the body. Errors are shaped by
+ * GlobalExceptionFilter.
  */
 @Injectable()
 export class ResponseTransformInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const request = context.switchToHttp().getRequest<FastifyRequest>();
-
-    const correlationId =
-      (request.headers['x-correlation-id'] as string) ?? 'none';
-
-    return next.handle().pipe(
-      map((data) => ({
-        success: true,
-        correlationId,
-        timestamp: new Date().toISOString(),
-        data,
-      })),
-    );
+  intercept(
+    _context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<unknown> {
+    return next.handle().pipe(map((data) => snakeKeys(data)));
   }
 }

@@ -40,7 +40,10 @@ export const kafkaConfig = registerAs('kafka', () => ({
     allowAutoTopicCreation: false, // topics must be pre-created explicitly
     fromBeginning: false,
   },
-  ssl: process.env.NODE_ENV === 'production',
+  // Explicit, NOT inferred from NODE_ENV: a production-mode container talking to
+  // a plaintext broker (docker compose) must be able to connect. Set
+  // KAFKA_SSL=true for a TLS broker (managed Kafka, Confluent Cloud, …).
+  ssl: process.env.KAFKA_SSL === 'true',
   sasl:
     process.env.KAFKA_SASL_USERNAME && process.env.KAFKA_SASL_PASSWORD
       ? {

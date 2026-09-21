@@ -11,6 +11,7 @@ import * as jwt from 'jsonwebtoken';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 export interface JwtPayload {
+  typ?: string;
   sub: string;
   role: 'ADMIN' | 'OPERATOR' | 'SERVICE';
   iat: number;
@@ -42,6 +43,10 @@ export class JwtAuthGuard {
     try {
       const secret = this.config.get<string>('app.jwt.secret') ?? '';
       const payload = jwt.verify(token, secret) as JwtPayload;
+      // Only ACCESS tokens open the API. Defence in depth: even if the two
+      // secrets were ever configured equal, a refresh token cannot be replayed
+      // as an access token.
+      if (payload.typ !== 'access') throw new Error('not an access token');
       (request as FastifyRequest & { user: JwtPayload }).user = payload;
       return true;
     } catch {

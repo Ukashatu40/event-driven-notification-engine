@@ -20,6 +20,9 @@ export class PrometheusService implements OnModuleInit {
   readonly notificationDndBlocksTotal: Counter;
   readonly notificationRetryTotal: Counter;
   readonly dndViolationsDetected: Counter;
+  readonly consentBlocksTotal: Counter;
+  readonly digestsSentTotal: Counter;
+  readonly digestItemsTotal: Counter;
 
   // ── Histograms ────────────────────────────────────────────────────
 
@@ -72,6 +75,27 @@ export class PrometheusService implements OnModuleInit {
       name: 'notification_retry_total',
       help: 'Total notification retry attempts',
       labelNames: ['attempt', 'provider'],
+      registers: [this.registry],
+    });
+
+    this.digestsSentTotal = new Counter({
+      name: 'notification_digests_sent_total',
+      help: 'Digest notifications created, by what triggered them',
+      labelNames: ['source'],
+      registers: [this.registry],
+    });
+
+    this.digestItemsTotal = new Counter({
+      name: 'notification_digest_items_total',
+      help: 'Individual notifications folded into digests, by source',
+      labelNames: ['source'],
+      registers: [this.registry],
+    });
+
+    this.consentBlocksTotal = new Counter({
+      name: 'notification_consent_blocks_total',
+      help: 'Sends stopped (mode=enforce) or flagged (mode=audit) for lack of valid consent',
+      labelNames: ['channel', 'classification', 'reason', 'mode'],
       registers: [this.registry],
     });
 

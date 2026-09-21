@@ -1,7 +1,14 @@
 // src/app.module.ts
-import { Module } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { RedisService } from './infrastructure/redis/redis.service';
+import { RedisSlidingWindowThrottlerStorage } from './api/throttler/redis-sliding-window.storage';
 import { LoggerModule } from 'nestjs-pino';
 import {
   appConfig,
@@ -21,6 +28,9 @@ import { ComplianceModule } from './compliance/compliance.module';
 import { PreferencesModule } from './preferences/preferences.module';
 import { TemplatesModule } from './templates/templates.module';
 import { DeliveryModule } from './delivery/delivery.module';
+import { CorrelationIdMiddleware } from './shared/middleware/correlation-id.middleware';
+import { RequestLoggerMiddleware } from './api/middleware/request-logger.middleware';
+import { PaymentsModule } from './payments/payments.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { EventsModule } from './events/events.module';
@@ -66,13 +76,19 @@ import { WebhooksModule } from './delivery/webhooks/webhooks.module';
     // Rate limiting — spec Section A10.1:
     //   100 req/min standard, 1000/min webhooks, 10/min preference updates
     //   Sliding window (not fixed) to prevent burst attacks at boundaries
-    ThrottlerModule.forRoot([
-      {
-        name: 'standard',
-        ttl: 60_000, // 60 seconds
-        limit: 100,
-      },
-    ]),
+    ThrottlerModule.forRootAsync({
+      inject: [RedisService],
+      useFactory: (redis: RedisService) => ({
+        throttlers: [
+          {
+            name: 'standard',
+            ttl: 60_000, // 60-second sliding window
+            limit: 100,
+          },
+        ],
+        storage: new RedisSlidingWindowThrottlerStorage(redis),
+      }),
+    }),
     KafkaModule,
     RabbitMQModule,
     SharedModule,
@@ -87,6 +103,16 @@ import { WebhooksModule } from './delivery/webhooks/webhooks.module';
     DashboardModule,
     AuthModule,
     WebhooksModule,
+    PaymentsModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    // Correlation id first, so the request logger (and everything downstream)
+    // sees it: generated at ingestion, honoured if the caller sent one, echoed
+    // back in the x-correlation-id response header (spec A11.1 pillar 3).
+    consumer
+      .apply(CorrelationIdMiddleware, RequestLoggerMiddleware)
+      .forRoutes({ path: '*', method: RequestMethod.ALL });
+  }
+}
