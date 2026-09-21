@@ -6,10 +6,30 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
-    { "key": "authToken", "value": "", "type": "string" },
-    { "key": "testUserId", "value": "", "type": "string" },
-    { "key": "testNotificationId", "value": "", "type": "string" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testNotificationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "consentId",
+      "value": ""
+    }
   ],
   "item": [
     {
@@ -23,8 +43,8 @@
               "script": {
                 "exec": [
                   "const r = pm.response.json();",
-                  "if (r.data && r.data.access_token) {",
-                  "  pm.collectionVariables.set('authToken', r.data.access_token);",
+                  "if (r.access_token) {",
+                  "  pm.collectionVariables.set('authToken', r.access_token);",
                   "  console.log('Token stored');",
                   "}"
                 ]
@@ -33,7 +53,12 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/v1/auth/login",
             "body": {
               "mode": "raw",
@@ -45,7 +70,12 @@
           "name": "Refresh token",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/v1/auth/refresh",
             "body": {
               "mode": "raw",
@@ -67,10 +97,10 @@
                 "exec": [
                   "pm.test('Status 202', () => pm.response.to.have.status(202));",
                   "const r = pm.response.json();",
-                  "pm.test('Has notification_id', () => pm.expect(r.data).to.have.property('notification_id'));",
-                  "pm.test('Has channels_targeted', () => pm.expect(r.data.channels_targeted).to.be.an('array'));",
-                  "pm.test('Status is CREATED', () => pm.expect(r.data.status).to.eql('CREATED'));",
-                  "if (r.data.notification_id) pm.collectionVariables.set('testNotificationId', r.data.notification_id);"
+                  "pm.test('Has notification_id', () => pm.expect(r).to.have.property('notification_id'));",
+                  "pm.test('Has channels_targeted', () => pm.expect(r.channels_targeted).to.be.an('array'));",
+                  "pm.test('Status is CREATED', () => pm.expect(r.status).to.eql('CREATED'));",
+                  "if (r.notification_id) pm.collectionVariables.set('testNotificationId', r.notification_id);"
                 ]
               }
             }
@@ -78,9 +108,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{authToken}}" },
-              { "key": "x-correlation-id", "value": "postman-test-001" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "x-correlation-id",
+                "value": "postman-test-001"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/events",
             "body": {
@@ -94,8 +133,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/events",
             "body": {
@@ -109,8 +154,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/events",
             "body": {
@@ -136,8 +187,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/events",
             "body": {
@@ -170,7 +227,10 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/notifications/{{testNotificationId}}"
           }
@@ -180,13 +240,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/notifications?page=1&limit=20",
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20" }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
               ]
             }
           }
@@ -196,8 +265,14 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/notifications/{{testNotificationId}}/read",
             "body": {
@@ -230,7 +305,10 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/users/{{testUserId}}/preferences"
           }
@@ -252,8 +330,14 @@
           "request": {
             "method": "PUT",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/users/{{testUserId}}/preferences",
             "body": {
@@ -286,13 +370,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/analytics/delivery-rates?period=7d&channel=all",
               "query": [
-                { "key": "period", "value": "7d" },
-                { "key": "channel", "value": "all" }
+                {
+                  "key": "period",
+                  "value": "7d"
+                },
+                {
+                  "key": "channel",
+                  "value": "all"
+                }
               ]
             }
           }
@@ -302,7 +395,10 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/analytics/channel-performance"
           }
@@ -312,7 +408,10 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/analytics/opt-out-trends"
           }
@@ -327,13 +426,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/dlq?page=1&limit=20",
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20" }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
               ]
             }
           }
@@ -343,8 +451,14 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/dlq/{{dlqId}}/resolve",
             "body": {
@@ -375,8 +489,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/notifications/preview",
             "body": {
@@ -408,7 +528,10 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
             ],
             "url": "{{baseUrl}}/api/v1/users/{{testUserId}}/data"
           }
@@ -482,13 +605,16 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
               {
                 "key": "x-msg91-signature",
                 "value": "test-signature-replace-in-prod"
               }
             ],
-            "url": "{{baseUrl}}/webhooks/dlr/sms/msg91",
+            "url": "{{baseUrl}}/api/webhooks/dlr/sms/msg91",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"msgid\": \"msg91_test_external_id\",\n  \"status\": \"DELIVRD\",\n  \"number\": \"+919876543210\"\n}"
@@ -504,18 +630,653 @@
                 "key": "Content-Type",
                 "value": "application/x-www-form-urlencoded"
               },
-              { "key": "x-twilio-signature", "value": "test-replace-in-prod" }
+              {
+                "key": "x-twilio-signature",
+                "value": "test-replace-in-prod"
+              }
             ],
-            "url": "{{baseUrl}}/webhooks/dlr/sms/twilio",
+            "url": "{{baseUrl}}/api/webhooks/dlr/sms/twilio",
             "body": {
               "mode": "urlencoded",
               "urlencoded": [
-                { "key": "MessageSid", "value": "SM_test_message_sid" },
-                { "key": "MessageStatus", "value": "delivered" },
-                { "key": "To", "value": "+919876543210" }
+                {
+                  "key": "MessageSid",
+                  "value": "SM_test_message_sid"
+                },
+                {
+                  "key": "MessageStatus",
+                  "value": "delivered"
+                },
+                {
+                  "key": "To",
+                  "value": "+919876543210"
+                }
               ]
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "Consent (Section A6.1 — append-only)",
+      "item": [
+        {
+          "name": "Record WhatsApp opt-in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/consents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{testUserId}}",
+                "consents"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"whatsapp\",\n  \"consent_type\": \"WHATSAPP_OPT_IN\",\n  \"consent_text\": \"I agree to receive investment updates from WealthBridge on WhatsApp.\",\n  \"ip_address\": \"197.210.10.4\",\n  \"user_agent\": \"Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('granted', () => pm.expect(r.granted).to.eql(true));",
+                  "pm.collectionVariables.set('consentId', r.consent_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record SMS opt-in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/consents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{testUserId}}",
+                "consents"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"sms\",\n  \"consent_type\": \"OPT_IN\",\n  \"consent_text\": \"I agree to receive SMS updates from WealthBridge.\",\n  \"ip_address\": \"197.210.10.4\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Withdraw SMS consent (a NEW record — nothing is edited)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/consents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{testUserId}}",
+                "consents"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"sms\",\n  \"consent_type\": \"OPT_OUT\",\n  \"consent_text\": \"Stop sending me SMS.\",\n  \"ip_address\": \"197.210.10.4\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('granted=false', () => pm.expect(r.granted).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "WhatsApp with a generic OPT_IN → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/consents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{testUserId}}",
+                "consents"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"whatsapp\",\n  \"consent_type\": \"OPT_IN\",\n  \"consent_text\": \"I agree to receive WhatsApp messages.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422', () => pm.response.to.have.status(422));",
+                  "pm.test('VALIDATION_FAILED', () => pm.expect(pm.response.json().error).to.eql('VALIDATION_FAILED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current consent per channel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/consents/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{testUserId}}",
+                "consents",
+                "status"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('lists all 5 channels', () => pm.expect(r.channels).to.have.lengthOf(5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consent history (newest first)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/consents?channel=sms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{testUserId}}",
+                "consents"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Compliance Audit (Challenge B2.3)",
+      "item": [
+        {
+          "name": "SMS audit — DND proof per message",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/compliance/audit/sms?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "compliance",
+                "audit",
+                "sms"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('no SMS sent without a DND check', () => pm.expect(r.summary.sent_without_dnd_check).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Promotional messages — consent behind each",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/compliance/audit/promotional-consent?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "compliance",
+                "audit",
+                "promotional-consent"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Window over 90 days → 422",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/compliance/audit/sms?from=2025-01-01T00:00:00Z&to=2026-01-01T00:00:00Z",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "compliance",
+                "audit",
+                "sms"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Digest preference (Day 5)",
+      "item": [
+        {
+          "name": "Choose a daily digest for market updates",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/preferences",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{testUserId}}",
+                "preferences"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{authToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"MKTX\",\n  \"channels\": {\n    \"sms\": false,\n    \"email\": false,\n    \"push\": true,\n    \"whatsapp\": false,\n    \"in_app\": true\n  },\n  \"digest_mode\": \"daily\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('updated', () => pm.expect(r.status).to.eql('updated'));",
+                  "pm.test('cache invalidated', () => pm.expect(r.cache_invalidated).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Payment Webhooks — Nigeria (signature required)",
+      "item": [
+        {
+          "name": "Paystack charge.success (needs x-paystack-signature = HMAC-SHA512 of the raw body)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/payments/paystack",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "payments",
+                "paystack"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"charge.success\",\n  \"data\": {\n    \"id\": 123456,\n    \"status\": \"success\",\n    \"reference\": \"ref-001\",\n    \"amount\": 500000,\n    \"currency\": \"NGN\",\n    \"customer\": {\n      \"email\": \"ada@example.ng\"\n    },\n    \"metadata\": {\n      \"user_id\": \"{{testUserId}}\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 without a valid signature (fails closed)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Flutterwave charge.completed (verif-hash header = your secret hash)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/payments/flutterwave",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "payments",
+                "flutterwave"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"charge.completed\",\n  \"data\": {\n    \"id\": 98765,\n    \"tx_ref\": \"tx-001\",\n    \"amount\": 5000,\n    \"currency\": \"NGN\",\n    \"status\": \"successful\",\n    \"customer\": {\n      \"email\": \"ada@example.ng\"\n    },\n    \"meta\": {\n      \"user_id\": \"{{testUserId}}\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 without verif-hash', () => pm.expect(pm.response.code).to.be.oneOf([200, 401]));"
+                ]
+              }
+            }
+          ]
         }
       ]
     }

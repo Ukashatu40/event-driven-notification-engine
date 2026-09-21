@@ -419,6 +419,16 @@ The project documents key architectural decisions under `docs/adr/`.
 
 ---
 
+## Consent and Digests
+
+Consent is an append-only evidence log enforced at dispatch (WhatsApp and promotional SMS/email); notifications can be delivered
+as hourly/daily digests, and overnight or capped pile-ups fold into one. See [docs/consent-and-digests.md](docs/consent-and-digests.md).
+
+## Nigeria Market
+
+The engine also serves Nigeria (`market = 'NG'`): ₦ formatting, Nigerian Pidgin / Hausa / Yoruba / Igbo, Termii SMS,
+and Paystack / Flutterwave / OPay / Interswitch payment webhooks. See [docs/nigeria-market.md](docs/nigeria-market.md).
+
 ## Document Error Log
 
 The project includes a documented review of specification inconsistencies.

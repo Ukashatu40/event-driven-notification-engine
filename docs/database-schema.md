@@ -209,6 +209,54 @@ Partitioning `notifications.created_at` monthly allows analytics queries for rec
 - Lower I/O
 - Better scalability
 
+#### Implementation (migration `20260921000001_partition_notifications`)
+
+`notifications` is `PARTITION BY RANGE ("createdAt")` with one UTC-month partition per month
+(`notifications_yYYYYmMM`) plus a `notifications_default` safety net. The migration converts an
+existing populated table in place (rows are copied, not lost). `ensure_notification_partitions(months_back, months_ahead)`
+is idempotent; `PartitionMaintenanceJob` calls it at startup and daily at 01:00 UTC, keeping three months of
+partitions ahead of the calendar.
+
+Two deliberate departures from the specification's DDL — PostgreSQL does not allow the spec's schema as written:
+
+| Spec | Implemented | Why |
+| ---- | ----------- | --- |
+| `id UUID PRIMARY KEY` on a partitioned table | `PRIMARY KEY (id, "createdAt")` | A unique/primary key on a partitioned table must include every partition column; the spec DDL fails with *"unique constraint on partitioned table must include all partitioning columns"*. |
+| `notification_state_log`, `delivery_attempts`, `dead_letter_queue` reference `notifications(id)` | Those three foreign keys are dropped; each keeps an index on `"notificationId"` | A foreign key needs a unique constraint on exactly the referenced columns, which a partitioned table cannot provide for `id` alone. These rows are written only by the application, in the same code path that creates the notification. |
+
+Prisma is not aware of partitioning, so the model still declares `id` as `@id`. Runtime queries (`WHERE "id" = $1`) are
+unaffected. Apply schema changes with `prisma migrate deploy`; do **not** run `prisma migrate dev` to "fix drift" — it would
+try to recreate the dropped constraints.
+
+#### Evidence: partition pruning (spec question A12.1-Q5)
+
+A one-week delivery-rate query touches a single partition:
+
+```sql
+EXPLAIN (COSTS OFF)
+SELECT channel,
+       count(*) FILTER (WHERE status IN ('SENT','DELIVERED','READ')) AS delivered,
+       count(*) AS total
+FROM notifications
+WHERE "createdAt" >= '2026-09-14' AND "createdAt" < '2026-09-21'
+GROUP BY channel;
+```
+
+```text
+GroupAggregate
+  Group Key: notifications.channel
+  ->  Sort
+        ->  Seq Scan on notifications_y2026m09 notifications
+              Filter: (("createdAt" >= '2026-09-14 ...') AND ("createdAt" < '2026-09-21 ...'))
+```
+
+Only `notifications_y2026m09` is scanned; the June–August partitions are pruned. On the small dev dataset (835 rows) the
+planner picks a sequential scan inside that partition; at production volume the per-partition BRIN index on `"createdAt"`
+and the `(eventType, createdAt)` B-tree take over.
+
+**Trade-off:** a lookup by `id` alone cannot prune, so it probes each partition's primary-key index. That is cheap for a
+handful of monthly partitions; callers that know the creation time should include a `"createdAt"` bound.
+
 ---
 
 ### BRIN Indexes

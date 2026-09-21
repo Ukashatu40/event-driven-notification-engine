@@ -1,11 +1,14 @@
 // src/preferences/dto/update-preference.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
+  ValidateNested,
 } from 'class-validator';
 
 export enum DigestMode {
@@ -54,11 +57,17 @@ export class UpdatePreferenceDto {
   @IsString()
   eventType?: string;
 
-  @ApiProperty()
+  @ApiProperty({ type: () => ChannelPreferencesDto })
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ChannelPreferencesDto)
   channels!: ChannelPreferencesDto;
 
   @ApiPropertyOptional({ enum: DigestMode })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toUpperCase() : value,
+  )
   @IsEnum(DigestMode)
   digestMode?: DigestMode;
 

@@ -19,6 +19,7 @@ import {
 import { PreferencesService } from './preferences.service';
 import { UpdatePreferenceDto } from './dto/update-preference.dto';
 import { Throttle } from '@nestjs/throttler';
+import { Roles } from '../api/decorators/roles.decorator';
 
 @ApiTags('preferences')
 @ApiBearerAuth('JWT')
@@ -26,6 +27,7 @@ import { Throttle } from '@nestjs/throttler';
 export class PreferencesController {
   constructor(private readonly preferencesService: PreferencesService) {}
 
+  @Roles('ADMIN', 'OPERATOR', 'SERVICE')
   @Get(':userId/preferences')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -44,6 +46,7 @@ export class PreferencesController {
   }
 
   // spec Section A10.1: 10 requests/minute for preference updates
+  @Roles('ADMIN', 'SERVICE')
   @Throttle({ standard: { limit: 10, ttl: 60_000 } })
   @Put(':userId/preferences')
   @HttpCode(HttpStatus.OK)

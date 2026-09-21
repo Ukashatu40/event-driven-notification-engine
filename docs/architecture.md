@@ -194,7 +194,7 @@ BE-6B-NotificationEngine-YourName/
 │
 ├── scripts/
 │   ├── generate-datasets.ts        # Creates the 4 CSV datasets
-│   └── seed-dnd-cache.ts
+│   └── (seeds moved to src/database/seeds/)
 │
 ├── docker-compose.yml
 ├── docker-compose.test.yml

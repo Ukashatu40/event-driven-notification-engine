@@ -28,6 +28,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import type { FastifyRequest } from 'fastify';
 import { Public } from '../../api/decorators/public.decorator';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
@@ -60,6 +61,7 @@ const FCM_RESULT_MAP: Record<string, NotificationStatus> = {
 
 // spec Section A10.1: 1000 requests/minute for webhook callbacks (delivery receipts)
 @ApiTags('webhooks')
+@Throttle({ standard: { limit: 1000, ttl: 60_000 } })
 @Controller('webhooks')
 export class WebhookDlrController {
   private readonly logger = new Logger(WebhookDlrController.name);
@@ -339,10 +341,14 @@ export class WebhookDlrController {
   ): void {
     const secret = this.config.get<string>(configKey) ?? '';
     if (!secret) {
-      this.logger.warn(
-        `${providerName} webhook secret not configured — skipping signature validation`,
+      // Fail CLOSED: an unconfigured secret must reject, not wave requests
+      // through — otherwise anyone could forge delivery receipts.
+      this.logger.error(
+        `${providerName} webhook secret is not configured — rejecting the request`,
       );
-      return; // In dev/test mode allow through; production must have secret set
+      throw new UnauthorizedException(
+        `${providerName} webhook is not configured`,
+      );
     }
 
     if (!receivedSignature) {
@@ -379,10 +385,12 @@ export class WebhookDlrController {
   ): void {
     const secret = this.config.get<string>(configKey) ?? '';
     if (!secret) {
-      this.logger.warn(
-        `${providerName} auth token not configured — skipping signature validation`,
+      this.logger.error(
+        `${providerName} auth token is not configured — rejecting the request`,
       );
-      return;
+      throw new UnauthorizedException(
+        `${providerName} webhook is not configured`,
+      );
     }
 
     if (!receivedSignature) {

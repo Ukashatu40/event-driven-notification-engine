@@ -7,6 +7,74 @@ AI acceleration noted per section E4 guidelines.
 
 ---
 
+## Post-Day-15 (4) — deployment hardening
+
+- **Preflight** (`scripts/bash/deploy/preflight.sh`): refuses unsafe configs (missing/short/placeholder/reused secrets, `NODE_ENV`, localhost CORS, `CONSENT_ENFORCEMENT=off`, tracked `.env`, invalid compose/alert rules); never prints values.
+- **Auth**: `JWT_REFRESH_SECRET` must differ from `JWT_SECRET` (startup validation); tokens carry a `typ` claim and the guard accepts only `access` tokens, so a refresh token can no longer be used as a bearer.
+- **Kafka TLS** is now opt-in via `KAFKA_SSL=true` (it was wrongly forced on by `NODE_ENV=production`, which broke the bundled plaintext broker).
+- **Docker**: `.dockerignore` (keeps `.env*`, `.git`, tests, docs out of image layers); healthchecks use `127.0.0.1` (Alpine resolved `localhost` to `::1`); one-shot `migrate` service runs `prisma migrate deploy` and `app` waits for it; obsolete compose `version:` removed.
+- **DEPLOYMENT.md** rewritten: secrets, preflight, verified deploy steps, consent rollout plan, alert runbook, failure behaviour, rollback, repository transfer.
+
+## Post-Day-15 (3) — consent API, digest aggregation, generated API docs
+
+- **Consent API** (`POST/GET /api/v1/users/:id/consents`, `…/status`), **append-only in Postgres** (trigger), enforced at dispatch for
+  WhatsApp and promotional SMS/email (`NO_CONSENT` state, `CONSENT_ENFORCEMENT=enforce|audit|off`), authorising record stored on
+  each notification, and two audit endpoints (`/compliance/audit/sms`, `/promotional-consent`). `ConsentService` previously existed
+  but nothing called it. Erasure now retains consent evidence. ADR-006.
+- **Digest aggregation**: user-chosen hourly/daily digests, "more than 5 overnight → one morning digest" (spec: *exceeds* 5, was `>=`),
+  and "3+ capped → digest". New `DIGEST_PENDING`/`DIGESTED` states, `DigestBucketService`/`DigestFlushService`, CRITICAL and mandated
+  events never digested, nothing lost on failure. Digest preferences were previously stored and ignored. ADR-007.
+- **Generated API docs**: `npm run docs:openapi` builds `docs/api-specification.{json,yaml}` from the controllers (the YAML was a
+  15-line stub, the JSON stale); CI runs it with `--check`. Postman collection fixed for the un-enveloped responses and extended.
+- **Fixed while here:** e2e suite left users behind and failed in `afterAll` (only caught because the suite line, not just the test
+  line, was checked); a leftover `logger.debug('Debugging')` ×2 removed.
+- **Tests:** 731 unit, 26 integration, 36 e2e (real Postgres/Redis/Kafka/RabbitMQ).
+
+## Post-Day-15 (2) — contract, security, operations, tests
+
+- **API contract (spec Appendix A):** snake_case in and out, no `{success,data}` envelope, 422 `VALIDATION_FAILED` with field
+  details, `CREATED` first in the state history, lowercase digest modes, `total_inr`. The spec's own example requests were previously
+  *rejected* (camelCase DTOs behind `forbidNonWhitelisted`; `PUT /preferences` failed on an undecorated `channels` field).
+- **Security:** RBAC was not enforced anywhere (no route declared `@Roles`) — now every route has a policy, enforced by a test.
+  `login` let the caller pick any role — now one credential per role. Real refresh-token rotation with reuse detection. Redis
+  sliding-window rate limiting. DLR webhooks fail closed. The dashboard WebSocket was open to anonymous clients — now authenticated.
+- **Operations:** `/health` `/ready` `/live` `/metrics` were 404 under the `api` prefix (so Prometheus scraping and the container
+  HEALTHCHECK were failing) — now at the root. Correlation-id and request-logger middleware were never registered — now are.
+  Prometheus alert rules (7, validated with `promtool`); `kafka_consumer_lag` and `notification_retry_total` were defined but never
+  emitted — now are; DND-violation tripwire; `/health` now reports providers; Redis dangerous commands disabled; Postgres TLS; Node 20.
+- **Correctness:** DLQ retry marked entries resolved then threw (illegal `DLQ → RETRYING` transition) — rewritten, with
+  classification (TRANSIENT/PERMANENT/CONFIGURATION), filters and 409 on double-resolve. The 90-day PII retention job matched no
+  rows. Channel-performance analytics returned fabricated 96% delivery figures — now computed from real data; "sent" no longer
+  counts suppressed notifications. Mock-mode providers now emit a labelled *simulated* receipt so analytics/latency work in dev.
+  6-hour minimum quiet window enforced; CRITICAL bypasses are audited in the state log. Template JSON files were invalid and
+  silently ignored (and the RISK-001 file was a stale draft missing the square-off warning) — regenerated and drift-tested.
+- **Tests:** 21.7% → 88% line coverage (thresholds now enforced at 80/80/75/60); 638 unit + 19 integration + 22 e2e tests. E2E
+  boots the real app against real Postgres/Redis/Kafka/RabbitMQ (`npm run test:e2e`, `npm run test:integration`).
+- **CI:** lint gate (errors fail), promtool rule check, and an integration/e2e job on `docker-compose.test.yml` (`REQUIRE_INFRA=true`).
+- **Structure:** `src/database/{seeds,models}`, `src/api/{routes,validators}`, `src/utils`, `src/events/taxonomy.yaml`,
+  `tests/{integration,e2e}` (seeds moved from `scripts/`; `npm run prisma:seed`, `seed:ng`, `seed:dnd-cache`).
+- _AI acceleration:_ Claude found the defects above by running the system against real infrastructure rather than reading it, and
+  wrote the regression tests; each fix is covered by a test that fails without it.
+
+## Post-Day-15 — pipeline wiring, PII, partitioning, Nigeria pack
+
+- **Fixed: the delivery pipeline was not wired.** Nothing consumed the RabbitMQ queues or called `DeliveryService`,
+  Kafka was not on the ingestion path, and publish threw on an invalid `QUEUED → QUEUED` transition. Added Kafka ingestion
+  (critical/standard consumer groups, dead-letter topic), per-channel notification rows, delivery workers, retry republish,
+  and a scheduled release for quiet-hours / send-time-optimised notifications.
+- **DND now checked at dispatch** (ADR-004), with the result persisted (`dndChecked`, `dndCheckTimestamp`, `dndResult`),
+  registry looked up for every SMS, promotional fails closed when the registry is down.
+- **Partitioned `notifications`** monthly (`PRIMARY KEY (id, "createdAt")`; child FKs dropped — see docs/database-schema.md).
+- **PII encrypted at rest** (AES-256-GCM `enc:v1:`), HMAC blind indexes for uniqueness/lookup, addresses resolved at send time
+  and never placed on the broker or in DLQ payloads. `npm run pii:encrypt` backfills existing rows.
+- **Fixed:** dedup fingerprint collapsed distinct same-type events (second deposit / margin call dropped); one multi-channel
+  event burned the whole category-hourly cap; quiet-hours branch deferred an empty channel list; regulator-mandated events were
+  swallowed by the same-type cooldown; SMS with `₹`/`₦` silently became 70-char UCS-2.
+- **Nigeria pack:** market profiles, Pidgin/Hausa/Yoruba/Igbo, ₦ formatting, Termii SMS, Paystack/Flutterwave/OPay/Interswitch
+  payment webhooks. See docs/nigeria-market.md.
+- _AI acceleration:_ Claude audited the repo against the spec, found and fixed the above, and wrote the tests; provider webhook
+  schemes were checked against the providers' public docs.
+
 ## Day 1 — Project Setup & Architecture Design
 
 **Deliverables:** Git repository, Docker Compose, architecture docs, event taxonomy YAML

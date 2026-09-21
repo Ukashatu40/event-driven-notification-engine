@@ -1,10 +1,13 @@
 // src/preferences/preferences.service.ts
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../infrastructure/database/prisma.service';
+import { ValidationFailedException } from '../shared/pipes/validation.pipe';
 import { PreferenceCacheService } from './preference-cache.service';
 import { UpdatePreferenceDto } from './dto/update-preference.dto';
 import { REGULATORY_MANDATORY_EVENTS } from '../shared/constants/event-types';
 import { ALL_CHANNELS } from '../shared/constants/channels';
+
+const MIN_QUIET_WINDOW_MINUTES = 6 * 60;
 
 @Injectable()
 export class PreferencesService {
@@ -64,12 +67,14 @@ export class PreferencesService {
           timezone: user.timezone,
         },
         language: user.language.toLowerCase(),
+        // No global digest is stored; per-category digest modes carry the setting.
+        digestMode: 'none',
       },
       categoryPreferences: Object.entries(byCategory).map(
         ([category, data]) => ({
           category,
           channels: data.channels,
-          digestMode: data.digestMode,
+          digestMode: data.digestMode.toLowerCase(),
         }),
       ),
       regulatoryOverrides,
@@ -87,6 +92,8 @@ export class PreferencesService {
     });
 
     if (!user) throw new NotFoundException(`User ${userId} not found`);
+
+    await this.assertQuietWindow(userId, dto);
 
     // Upsert preference for each channel
     const upsertOps = ALL_CHANNELS.map((channel) => {
@@ -146,6 +153,46 @@ export class PreferencesService {
       cacheInvalidated: true,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Spec A6.3: "a minimum 6-hour enforced quiet window". A shorter window would
+   * defeat the point of quiet hours; a 24-hour window would silence the user
+   * entirely, so the window is also capped below a full day.
+   */
+  private async assertQuietWindow(
+    userId: string,
+    dto: UpdatePreferenceDto,
+  ): Promise<void> {
+    if (!dto.quietHoursStart && !dto.quietHoursEnd) return;
+
+    const current = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { quietHoursStart: true, quietHoursEnd: true },
+    });
+    const start = dto.quietHoursStart ?? current?.quietHoursStart ?? '21:00';
+    const end = dto.quietHoursEnd ?? current?.quietHoursEnd ?? '08:00';
+
+    const minutes = (t: string): number => {
+      const [h = 0, m = 0] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    // wrap past midnight: 22:00 → 07:00 is 9h
+    const length = (minutes(end) - minutes(start) + 1440) % 1440;
+
+    if (length < MIN_QUIET_WINDOW_MINUTES) {
+      throw new ValidationFailedException(
+        [
+          {
+            field: dto.quietHoursStart
+              ? 'quiet_hours_start'
+              : 'quiet_hours_end',
+            error: `quiet hours must span at least 6 hours (got ${Math.floor(length / 60)}h${length % 60 ? ` ${length % 60}m` : ''})`,
+          },
+        ],
+        'Quiet hours window is too short',
+      );
+    }
   }
 
   private buildWarnings(dto: UpdatePreferenceDto): string[] {

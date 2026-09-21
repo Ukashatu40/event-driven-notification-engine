@@ -1,205 +1,185 @@
-<!-- DEPLOYMENT.md -->
-
 # Deployment Guide
 
-## Prerequisites
+BE-6B Event-Driven Notification Engine. This guide is verified: the stack below was built and booted with
+`docker compose up -d --build`, all containers reported healthy, Prometheus scraped the app, and a real margin call was delivered
+through the containerised app.
 
-- Docker Engine 24+
-- Docker Compose v2.20+
-- Node.js 20 LTS (for local development only)
-- 4GB RAM minimum (8GB recommended for full stack)
+## 1. What runs
 
----
+| Service | Image | Purpose | Notes |
+|---|---|---|---|
+| `app` | built from `Dockerfile` (target `production`, Node 20, non-root `nestjs`) | API + Kafka consumers + delivery workers + schedulers | health: `GET /ready` |
+| `migrate` | same Dockerfile, target `builder` | one-shot `prisma migrate deploy` | `app` waits for it to **succeed** |
+| `postgres` | postgres:15 | primary store, TLS on | certs from the `postgres-certs` init container |
+| `redis` | redis:7 | caps, dedup, digests, rate limits, refresh tokens | password; `FLUSHALL/FLUSHDB/KEYS/DEBUG` disabled |
+| `kafka` + `zookeeper` | Confluent 7.5 | event ingestion (`notification-critical`, `notification-events`, `notification-dlq`) | |
+| `rabbitmq` | 3.12 | per-channel priority queues + DLX | |
+| `prometheus`, `grafana` | | metrics, 7 alert rules (`monitoring/alert-rules.yml`) | |
 
-## Local Development
+The app is stateless: run several replicas behind a load balancer. Kafka partitions and RabbitMQ consumers are shared between them.
 
-### 1. Infrastructure only (recommended for development)
+## 2. Before you deploy
 
-```bash
-# Start all infrastructure services
-docker compose up postgres redis zookeeper kafka rabbitmq -d
+### 2.1 Secrets
 
-# Wait for services to be healthy
-docker compose ps
-
-# Run migrations
-npx prisma migrate dev
-
-# Seed database
-npm run prisma:seed
-
-# Start app in watch mode
-npm run start:dev
-```
-
-### 2. Full stack via Docker Compose
+Generate them, put them in your secrets manager (or a `.env` that is **never committed**):
 
 ```bash
-# Copy and configure environment
-cp .env.example .env
-# Edit .env with your values
-
-# Build and start everything
-docker compose up -d
-
-# Check all services are healthy
-docker compose ps
-
-# View application logs
-docker compose logs app -f
-
-# Run migrations inside container
-docker compose exec app npx prisma migrate deploy
+openssl rand -hex 32   # JWT_SECRET
+openssl rand -hex 32   # JWT_REFRESH_SECRET   (must differ from JWT_SECRET — the app refuses to start otherwise)
+openssl rand -hex 32   # PII_ENCRYPTION_KEY   (exactly 64 hex chars)
+openssl rand -hex 32   # PII_HASH_KEY
+openssl rand -hex 24   # SERVICE_API_KEY, OPERATOR_API_KEY, ADMIN_API_KEY — one each
+openssl rand -hex 16   # DB_PASSWORD, REDIS_PASSWORD, RABBITMQ_PASSWORD, WEBHOOK_SIGNATURE_SECRET, GRAFANA_PASSWORD
 ```
 
-### 3. Verify the stack is running
+> **Back up `PII_ENCRYPTION_KEY` separately from the database.** Phone numbers and emails are unrecoverable without it.
+> Passwords go into connection URLs — avoid `@ : / ? #` or URL-encode them.
+
+### 2.2 Preflight (run it — it blocks unsafe configurations)
 
 ```bash
-# Health check
-curl http://localhost:3000/health
-
-# Readiness probe
-curl http://localhost:3000/ready
-
-# Prometheus metrics
-curl http://localhost:3000/metrics
-
-# Swagger UI
-open http://localhost:3000/api-docs
-
-# RabbitMQ management UI
-open http://localhost:15672
-# Default: notification_user / <RABBITMQ_PASSWORD from .env>
-
-# Grafana dashboard
-open http://localhost:3001
-# Default: admin / <GRAFANA_PASSWORD from .env>
+scripts/bash/deploy/preflight.sh .env.production
 ```
 
----
+It fails on: missing/short/placeholder secrets, reused secrets, `NODE_ENV != production`, localhost CORS, `CONSENT_ENFORCEMENT=off`,
+a tracked `.env`, invalid compose/alert rules. It warns about providers still in mock mode and unencrypted Kafka. It never prints a secret.
 
-## Environment Variables
+### 2.3 Environment reference
 
-All required variables are documented in `.env.example`.
+| Variable | Required | Meaning |
+|---|---|---|
+| `NODE_ENV` | ✔ | `production` |
+| `DATABASE_URL`, `DB_HOST/PORT/NAME/USER/PASSWORD` | ✔ | add `sslmode=require` (or `verify-full` with your CA) |
+| `REDIS_HOST/PORT/PASSWORD` | ✔ | |
+| `KAFKA_BROKERS`, `KAFKA_CLIENT_ID`, `KAFKA_GROUP_ID_STANDARD/CRITICAL` | ✔ | |
+| `KAFKA_SSL` | | `true` for a TLS broker (**not** inferred from `NODE_ENV`); default `false` |
+| `RABBITMQ_URL`, `RABBITMQ_USER/PASSWORD` | ✔ | |
+| `JWT_SECRET`, `JWT_REFRESH_SECRET` | ✔ | must differ |
+| `PII_ENCRYPTION_KEY`, `PII_HASH_KEY` | ✔ | |
+| `SERVICE_API_KEY`, `OPERATOR_API_KEY`, `ADMIN_API_KEY` | | a role with no key cannot log in |
+| `WEBHOOK_SIGNATURE_SECRET`, `SMTP_HOST`, `SMTP_FROM` | ✔ | |
+| `CORS_ORIGINS` | ✔ | comma-separated real origins |
+| `CONSENT_ENFORCEMENT` | | `enforce` (default) \| `audit` \| `off` — see §4.2 |
+| `MSG91_*`, `TERMII_*`, `TWILIO_*`, `FCM_PROJECT_ID`, `WHATSAPP_*`, `SMTP_USER/PASS` | | without a key a provider runs in **mock mode** (simulated, labelled receipts) |
+| `PAYSTACK_SECRET_KEY`, `FLUTTERWAVE_SECRET_HASH`, `OPAY_SECRET_KEY`, `INTERSWITCH_SECRET_KEY` | | a payment webhook whose secret is unset **rejects everything** |
+| `KAFKA_CONSUMERS_ENABLED`, `DELIVERY_WORKERS_ENABLED`, `SCHEDULED_RELEASE_ENABLED`, `DIGEST_ENABLED`, `KAFKA_LAG_MONITOR_ENABLED` | | `false` turns that worker off — for API-only or worker-only replicas |
 
-Critical variables that must be set before running:
-
-| Variable                   | Description               | Minimum             |
-| -------------------------- | ------------------------- | ------------------- |
-| `JWT_SECRET`               | JWT signing key           | 32 characters       |
-| `JWT_REFRESH_SECRET`       | Refresh token key         | 32 characters       |
-| `DB_PASSWORD`              | PostgreSQL password       | Any strong password |
-| `REDIS_PASSWORD`           | Redis AUTH password       | Any strong password |
-| `RABBITMQ_PASSWORD`        | RabbitMQ password         | Any strong password |
-| `WEBHOOK_SIGNATURE_SECRET` | Provider webhook HMAC key | 16 characters       |
-
----
-
-## Database Migrations
+## 3. Deploy
 
 ```bash
-# Development — creates migration files
-npx prisma migrate dev --name <description>
-
-# Production — applies existing migrations only
-npx prisma migrate deploy
-
-# Reset database (DANGER — destroys all data)
-npx prisma migrate reset
-
-# View migration status
-npx prisma migrate status
+docker compose up -d --build        # builds, runs migrations, starts everything
+docker compose ps                   # every service healthy; `migrate` exited 0
+docker logs notification_migrate    # "All migrations have been successfully applied" / "No pending migrations"
 ```
 
----
+Order is enforced by compose: postgres healthy → `migrate` succeeded → `app` starts. A failed migration stops the release; the
+previous containers keep serving.
 
-## Production Deployment Checklist
-
-### Security
-
-- [ ] All secrets are set via environment variables — nothing hardcoded
-- [ ] `.env` is in `.gitignore` and never committed
-- [ ] `NODE_ENV=production` is set
-- [ ] JWT secrets are at least 32 characters
-- [ ] Redis AUTH is enabled (`--requirepass`)
-- [ ] PostgreSQL SSL is enabled for client connections
-- [ ] Docker containers run as non-root user (already configured)
-- [ ] Resource limits are set in Docker Compose (already configured)
-
-### Infrastructure
-
-- [ ] All health checks pass: `GET /health`
-- [ ] Readiness probe passes: `GET /ready`
-- [ ] Kafka topics are created (auto-created on first start)
-- [ ] RabbitMQ exchanges and queues are provisioned (auto on start)
-- [ ] Database migrations are applied: `prisma migrate deploy`
-- [ ] Database is seeded with template records: `npm run prisma:seed`
-
-### Observability
-
-- [ ] Prometheus is scraping `/metrics` endpoint
-- [ ] Grafana datasource is pointed at Prometheus
-- [ ] Alert rules are configured for DLQ depth, circuit breakers, latency
-- [ ] Structured logs are flowing (check `docker compose logs app`)
-- [ ] Correlation IDs appear in log lines
-
-### Monitoring Alerts to Configure in Grafana
-
-- DLQ depth > 100 for > 5 minutes → CRITICAL
-- Any provider circuit breaker OPEN → HIGH
-- P99 delivery latency > 30s for CRITICAL events → CRITICAL
-- Delivery failure rate > 5% in 10-minute window → HIGH
-- Kafka consumer lag > 10,000 messages → HIGH
-- DND violations detected (should always be zero) → CRITICAL
-
----
-
-## Scaling Guide
-
-### Horizontal scaling (add more app instances)
+### 3.1 Post-deploy verification
 
 ```bash
-docker compose up app --scale app=3 -d
+curl -fsS localhost:3000/health | jq '{status, components: (.components|map_values(.status))}'
+#  → healthy; database, redis, kafka, rabbitmq, providers all "up"
+curl -fsS localhost:3000/metrics | grep -c '^notification_'          # metrics flowing
+curl -s 'localhost:9090/api/v1/targets' | jq -r '.data.activeTargets[] | "\(.labels.job) \(.health)"'   # → up
+curl -s 'localhost:9090/api/v1/rules'   | jq '[.data.groups[].rules[]] | length'                        # → 7
 ```
 
-All instances share Redis state so circuit breakers, frequency caps,
-and deduplication work correctly across instances.
-
-### Kafka partition scaling
-
-Increase partitions when consumer lag grows consistently above 10,000:
+Then a real event (use the SERVICE key):
 
 ```bash
-docker compose exec kafka \
-  kafka-topics --bootstrap-server localhost:9092 \
-  --alter --topic notification-events \
-  --partitions 12
+TOKEN=$(curl -s localhost:3000/api/v1/auth/login -H 'content-type: application/json' \
+  -d "{\"serviceKey\":\"$SERVICE_API_KEY\",\"role\":\"SERVICE\"}" | jq -r .access_token)
+# POST /api/v1/events (see docs/api-specification.json or the Postman collection), then
+# GET /api/v1/notifications/<id> → state_history CREATED … SENT/DELIVERED, compliance block populated
 ```
 
-Add consumer instances proportionally (1 instance per partition maximum).
+Swagger UI: `/api-docs`. The full contract lives in `docs/api-specification.{json,yaml}`, generated from the code (`npm run docs:openapi`).
 
-### Redis scaling
+## 4. Migrating existing data
 
-For > 10M daily notifications, migrate to Redis Cluster:
-
-- Set `REDIS_CLUSTER=true` in environment
-- Set `REDIS_CLUSTER_NODES` with comma-separated `host:port` pairs
-- Frequency capping uses atomic INCR which is cluster-safe
-
-### PostgreSQL read replicas
-
-Analytics queries (`GET /analytics/*`) can be routed to read replicas
-by setting `DATABASE_REPLICA_URL` in environment. The analytics service
-will use this connection for all SELECT operations.
-
----
-
-## Stopping the Stack
+### 4.1 Encrypt existing PII (once)
 
 ```bash
-# Stop all services (preserves data volumes)
-docker compose down
-
-# Stop and remove all data (DANGER)
-docker compose down -v
+npm run pii:encrypt        # idempotent; encrypts phone/email, fills the blind indexes
 ```
+
+Until it has run, the app logs a warning and passes plaintext through so nothing breaks during the rollout window.
+
+### 4.2 Consent — do not flip to `enforce` blind
+
+Existing users have **no consent records**, and none may be fabricated. With `CONSENT_ENFORCEMENT=enforce`, WhatsApp and promotional
+SMS/email to them would be blocked (state `NO_CONSENT`). Roll out in this order:
+
+1. Deploy with `CONSENT_ENFORCEMENT=audit` — sends continue, each missing consent is logged and counted
+   (`notification_consent_blocks_total{mode="audit"}`).
+2. Record **real** consent through `POST /api/v1/users/:id/consents` as users opt in (include their IP and the exact wording shown).
+3. When the audit count is acceptable (or zero for the channels you care about), set `enforce` and redeploy.
+
+`npm run seed:consent` adds *synthetic* consent for development data only and refuses to run with `NODE_ENV=production`.
+
+## 5. Operations
+
+### 5.1 Alerts (see `monitoring/alert-rules.yml`)
+
+| Alert | Fires when | First response |
+|---|---|---|
+| `HighDLQDepth` | DLQ > 100 for 5 min | `GET /api/v1/dlq?classification=CONFIGURATION` first — those need a fix, not a retry; then TRANSIENT → `PATCH /dlq/:id/resolve {"action":"retry"}` |
+| `ProviderCircuitOpen` | a provider's breaker is OPEN | SMS fails over automatically (MSG91/Termii → Twilio). Check the provider status page; it half-opens by itself after 60 s |
+| `DeliveryLatencySpike` | CRITICAL P99 > 30 s | check `KafkaConsumerLag` on `notification-critical`, RabbitMQ `notifications.*` queue depth |
+| `HighFailureRate` | > 5 % failed over 10 min | `GET /api/v1/analytics/channel-performance` to find the provider |
+| `KafkaConsumerLag` | lag > 10 000 for 5 min | add app replicas (Kafka partitions bound the parallelism) |
+| `DNDViolationDetected` | tripwire counter > 0 | **page compliance.** The send was refused, but the policy check has a bug |
+| `FrequencyCapExhaustion` | > 50 % of events hit the daily cap | review notification volume / digests |
+
+### 5.2 Failure behaviour
+
+| Failure | Behaviour |
+|---|---|
+| Redis down | rate limiting fails **open** (logged); frequency caps degrade (see ADR-003); refresh/dedup unavailable → requests error rather than skip safety checks |
+| Kafka down | `POST /events` → `503`, the dedup claim is released so the caller's retry is not called a duplicate |
+| RabbitMQ down | engine dead-letters what it cannot queue (visible in the DLQ) |
+| DND registry / consent lookup down | promotional send is **withheld and retried**, never sent blind |
+| Provider down | circuit breaker → failover → retry with backoff → DLQ |
+| App crash mid-flight | unacked RabbitMQ messages are redelivered; a duplicate for an already-`SENT` notification is dropped |
+
+### 5.3 Scaling
+
+Run more `app` replicas (Kafka consumer groups and RabbitMQ prefetch spread the work; ZREM-claimed schedulers never double-process).
+To split roles, run some replicas with `KAFKA_CONSUMERS_ENABLED=false DELIVERY_WORKERS_ENABLED=false` (API only) and others with the
+workers on. Kafka partitions (6 standard / 3 critical) cap consumer parallelism — raise them **before** you need to.
+
+### 5.4 Rollback
+
+Migrations are additive and forward-only. To roll back the **code**: redeploy the previous image — it runs against the newer schema
+(new columns/enum values are ignored by old code). Do not `prisma migrate reset` in production. The consent log is append-only by design.
+
+### 5.5 Backups
+
+Back up Postgres (notifications, consent evidence, state log), and `PII_ENCRYPTION_KEY` **separately**. Redis holds only reconstructible
+or short-lived state (caps, dedup, digest buckets, refresh tokens — losing it logs users out and drops un-flushed digests).
+
+## 6. What the bundled compose file is (and is not)
+
+`docker-compose.yml` is a **single-host** deployment: convenient and verified, not highly available.
+
+- Infrastructure ports are published to the host for development. **Remove the `ports:` of postgres, redis, kafka, zookeeper and rabbitmq** in production and rely on the compose network.
+- Postgres TLS uses a self-signed certificate generated at first start. Use your CA's certificate and `sslmode=verify-full`.
+- One Kafka broker, one ZooKeeper, one RabbitMQ: no replication. For real availability use managed services (set `KAFKA_SSL=true` + SASL, `REDIS_*`, `RABBITMQ_URL` accordingly).
+- Put a TLS-terminating reverse proxy / load balancer in front of `app:3000` (`trustProxy` is on, so client IPs are honoured for rate limiting).
+- Image size is ~1.1 GB (target was 200 MB): ~170 MB is OpenTelemetry packages nothing imports — removing them is the next-largest saving.
+
+## 7. Repository transfer (spec Day 15)
+
+1. `git status` clean on `main`; CI green (lint, unit ≥ 80 % coverage, alert-rule check, integration + e2e).
+2. Repo → **Settings → Collaborators** → add `@ZethetaIntern`.
+3. Repo → **Settings → General → Transfer ownership** → `ZethetaIntern` (name: `BE-6B-NotificationEngine-<YourName>`).
+4. Verify on the new owner: all branches and history present, Actions enabled, secrets re-created (they do not transfer), `.zetheta-project.json`'s `github_repo_url` matches.
+5. Rotate every credential that ever appeared in the repository history (the old `SERVICE_API_KEY` was committed in `.env.example`).
+
+## 8. Known limitations
+
+See [docs/security.md](docs/security.md) (known gaps) and [docs/consent-and-digests.md](docs/consent-and-digests.md). Notably: no device-token registry (real
+FCM push is not functional; mock mode is), WhatsApp templates are always sent as `en_IN`, per-IP (not per-user) rate limiting, and
+Nigerian-language translations are drafts awaiting native-speaker review.
