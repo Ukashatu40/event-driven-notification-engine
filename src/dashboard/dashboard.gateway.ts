@@ -107,6 +107,20 @@ export class DashboardGateway
     client.emit('subscribed', { channel: `user:${data.userId}` });
   }
 
+  /** True when the feature is on and at least one client is connected, so callers can skip work nobody would see. */
+  isWatched(): boolean {
+    if (!this.enabled) return false;
+    // For a namespaced gateway Nest injects a Namespace, whose `sockets` is the
+    // Map of clients; on a bare Server, `sockets` is the main namespace instead.
+    const sockets: unknown = (this.server as { sockets?: unknown } | undefined)
+      ?.sockets;
+    const clients =
+      sockets instanceof Map
+        ? sockets
+        : (sockets as { sockets?: Map<string, unknown> } | undefined)?.sockets;
+    return (clients?.size ?? 0) > 0;
+  }
+
   /**
    * Broadcasts a state transition to both the firehose and the
    * specific user's room. Called by NotificationStateService on every

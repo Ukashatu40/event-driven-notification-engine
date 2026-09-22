@@ -1,5 +1,5 @@
 // src/delivery/delivery.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../infrastructure/database/prisma.service';
 import { PrometheusService } from '../health/prometheus/prometheus.service';
 import { CircuitBreakerService } from './circuit-breaker/circuit-breaker.service';
@@ -22,6 +22,7 @@ import { DndService } from '../compliance/dnd/dnd.service';
 import { ConsentService } from '../compliance/dnd/consent.service';
 import { ConfigService } from '@nestjs/config';
 import { DispatchService } from './dispatch/dispatch.service';
+import { DashboardGateway } from '../dashboard/dashboard.gateway';
 import { NotificationStatus } from '../shared/constants/notification-states';
 import { Priority } from '../shared/constants/priorities';
 import { CHANNEL_COST_PAISA } from '../shared/constants/channels';
@@ -66,6 +67,8 @@ export class DeliveryService {
     private readonly termii: TermiiProvider,
     private readonly consent: ConsentService,
     private readonly config: ConfigService,
+    // Optional: the live dashboard is a feature flag, and delivery must never depend on it.
+    @Optional() private readonly dashboard?: DashboardGateway,
   ) {
     this.providers = {
       sms: { primary: this.msg91, fallback: this.twilio },
@@ -424,6 +427,41 @@ export class DeliveryService {
         metadata: metadata as Prisma.InputJsonValue,
       },
     });
+    await this.announce(notificationId, from, to);
+  }
+
+  /**
+   * Tells the live dashboard about a transition. The engine's own transitions
+   * are broadcast by NotificationStateService; delivery writes its states
+   * directly, so it announces them here. Best effort: it never throws, and it
+   * does no work when nobody is watching.
+   */
+  private async announce(
+    notificationId: string,
+    from: NotificationStatus | null,
+    to: NotificationStatus,
+  ): Promise<void> {
+    if (!this.dashboard?.isWatched()) return;
+    try {
+      const n = await this.prisma.notification.findUnique({
+        where: { id: notificationId },
+        select: { userId: true, eventType: true, channel: true },
+      });
+      if (!n) return;
+      this.dashboard.broadcastStateChange({
+        notificationId,
+        userId: n.userId,
+        eventType: n.eventType,
+        channel: n.channel,
+        fromStatus: from,
+        toStatus: to,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      this.logger.debug(
+        `Dashboard announce failed for ${notificationId}: ${(err as Error).message}`,
+      );
+    }
   }
 
   private async tryProvider(
@@ -492,6 +530,11 @@ export class DeliveryService {
         },
       },
     });
+    await this.announce(
+      notification.notificationId,
+      NotificationStatus.QUEUED,
+      NotificationStatus.SENT,
+    );
 
     await this.prisma.deliveryAttempt.create({
       data: {

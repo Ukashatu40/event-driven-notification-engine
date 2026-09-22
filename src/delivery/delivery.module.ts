@@ -13,9 +13,10 @@ import { DeliveryService } from './delivery.service';
 import { DispatchService } from './dispatch/dispatch.service';
 import { DeliveryWorkerService } from './workers/delivery-worker.service';
 import { ComplianceModule } from '../compliance/compliance.module';
+import { DashboardModule } from '../dashboard/dashboard.module';
 
 @Module({
-  imports: [ComplianceModule],
+  imports: [ComplianceModule, DashboardModule],
   providers: [
     CircuitBreakerService,
     RetryWorkerService,

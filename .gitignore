@@ -13,3 +13,5 @@ node_modules
 /generated/prisma
 /dist
 /coverage
+# The console lives in its own repository (frontend/.git); never track it from here.
+/frontend/
