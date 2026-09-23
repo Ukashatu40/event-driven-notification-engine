@@ -1,11 +1,18 @@
 // src/delivery/retry/retry-worker.service.ts
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { REDIS_KEYS } from '../../shared/constants/redis-keys';
 import { Priority, RETRY_CONFIG } from '../../shared/constants/priorities';
 import { NotificationStatus } from '../../shared/constants/notification-states';
 import { calculateRetryDelay } from '../../shared/utils/retry.util';
+import { DispatchService } from '../dispatch/dispatch.service';
+import { PrometheusService } from '../../health/prometheus/prometheus.service';
 
 /**
  * Retry worker using Redis sorted sets.
@@ -20,18 +27,25 @@ import { calculateRetryDelay } from '../../shared/utils/retry.util';
  * are always processed before LOW retries.
  */
 @Injectable()
-export class RetryWorkerService implements OnModuleInit {
+export class RetryWorkerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RetryWorkerService.name);
   private isRunning = false;
   private intervalHandle: NodeJS.Timeout | null = null;
+  private polling = false;
 
   constructor(
     private readonly redis: RedisService,
     private readonly prisma: PrismaService,
+    private readonly dispatch: DispatchService,
+    private readonly prometheus: PrometheusService,
   ) {}
 
   onModuleInit(): void {
     this.start();
+  }
+
+  onModuleDestroy(): void {
+    this.stop();
   }
 
   start(): void {
@@ -40,7 +54,12 @@ export class RetryWorkerService implements OnModuleInit {
 
     // Poll every 5 seconds
     this.intervalHandle = setInterval(() => {
-      void this.processDueRetries();
+      // Skip a tick rather than overlap with a slow previous one.
+      if (this.polling) return;
+      this.polling = true;
+      void this.processDueRetries().finally(() => {
+        this.polling = false;
+      });
     }, 5_000);
 
     this.logger.log('Retry worker started');
@@ -138,6 +157,15 @@ export class RetryWorkerService implements OnModuleInit {
   }
 
   private async requeueNotification(notificationId: string): Promise<void> {
+    const before = await this.prisma.notification.findUnique({
+      where: { id: notificationId },
+      select: { deliveryAttempts: true, provider: true },
+    });
+    this.prometheus.notificationRetryTotal.inc({
+      attempt: String(before?.deliveryAttempts ?? 0),
+      provider: before?.provider ?? 'unknown',
+    });
+
     await this.prisma.notification.update({
       where: { id: notificationId },
       data: {
@@ -146,7 +174,6 @@ export class RetryWorkerService implements OnModuleInit {
       },
     });
 
-    // State log entry
     await this.prisma.notificationStateLog.create({
       data: {
         notificationId,
@@ -156,5 +183,26 @@ export class RetryWorkerService implements OnModuleInit {
         metadata: { requeuedAt: new Date().toISOString() },
       },
     });
+
+    // Put the message back on its channel queue so a delivery worker picks it up.
+    const published = await this.dispatch.publishStored(notificationId);
+
+    if (!published) {
+      // Nothing to resend (no rendered content) — dead-letter rather than loop.
+      await this.prisma.notification.update({
+        where: { id: notificationId },
+        data: { status: NotificationStatus.DLQ, updatedAt: new Date() },
+      });
+      await this.prisma.deadLetterQueue.create({
+        data: {
+          notificationId,
+          originalEvent: { notificationId },
+          failureReason: 'Retry requested but notification has no content',
+          retryCount: 0,
+          lastError: 'REQUEUE_NO_CONTENT',
+          failureClass: 'CONFIGURATION',
+        },
+      });
+    }
   }
 }

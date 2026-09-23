@@ -27,17 +27,30 @@ export class NodemailerProvider implements IDeliveryProvider, OnModuleInit {
 
     // Use Ethereal test account when no SMTP creds provided
     if (!user || !pass) {
-      const testAccount = await nodemailer.createTestAccount();
-      this.transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-      this.logger.log(`Email using Ethereal test account: ${testAccount.user}`);
+      try {
+        const testAccount = await nodemailer.createTestAccount();
+        this.transporter = nodemailer.createTransport({
+          host: 'smtp.ethereal.email',
+          port: 587,
+          secure: false,
+          auth: {
+            user: testAccount.user,
+            pass: testAccount.pass,
+          },
+        });
+        this.logger.log(
+          `Email using Ethereal test account: ${testAccount.user}`,
+        );
+      } catch (err) {
+        // Ethereal is a third-party test service; its outage must not take the
+        // whole engine down. Fall back to an offline transport (nothing is
+        // actually emailed) so every other channel keeps working.
+        this.transporter = nodemailer.createTransport({ jsonTransport: true });
+        this.logger.warn(
+          `Could not create an Ethereal test account (${(err as Error).message}) — ` +
+            'email is running on an offline JSON transport',
+        );
+      }
       return;
     }
 

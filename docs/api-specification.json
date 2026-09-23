@@ -1,50 +1,338 @@
 {
   "openapi": "3.0.0",
   "paths": {
-    "/api/health": {
+    "/health": {
       "get": {
         "operationId": "HealthController_health",
         "summary": "Full system health check",
         "description": "Returns health status of all components: database, Redis, Kafka, RabbitMQ",
         "parameters": [],
         "responses": {
-          "200": { "description": "System is healthy" },
-          "503": { "description": "One or more components are down" }
+          "200": {
+            "description": "System is healthy"
+          },
+          "503": {
+            "description": "One or more components are down"
+          }
         },
-        "tags": ["health"]
+        "tags": [
+          "health"
+        ]
       }
     },
-    "/api/ready": {
+    "/ready": {
       "get": {
         "operationId": "HealthController_ready",
         "summary": "Readiness probe",
         "description": "Used by container orchestrators. Returns 200 when ready to serve traffic.",
         "parameters": [],
         "responses": {
-          "200": { "description": "Ready" },
-          "503": { "description": "Not ready" }
+          "200": {
+            "description": "Ready"
+          },
+          "503": {
+            "description": "Not ready"
+          }
         },
-        "tags": ["health"]
+        "tags": [
+          "health"
+        ]
       }
     },
-    "/api/live": {
+    "/live": {
       "get": {
         "operationId": "HealthController_alive",
         "summary": "Liveness probe",
         "description": "Used by container orchestrators. Returns 200 as long as process is alive.",
         "parameters": [],
-        "responses": { "200": { "description": "Alive" } },
-        "tags": ["health"]
+        "responses": {
+          "200": {
+            "description": "Alive"
+          }
+        },
+        "tags": [
+          "health"
+        ]
       }
     },
-    "/api/metrics": {
+    "/metrics": {
       "get": {
         "operationId": "HealthController_metrics",
         "summary": "Prometheus metrics",
         "description": "Exposes all application metrics in Prometheus text format. Scraped by Prometheus server.",
         "parameters": [],
-        "responses": { "200": { "description": "Prometheus metrics text" } },
-        "tags": ["health"]
+        "responses": {
+          "200": {
+            "description": "Prometheus metrics text"
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/users/{userId}/consents": {
+      "post": {
+        "operationId": "ConsentController_record",
+        "summary": "Record a consent event (opt-in or opt-out)",
+        "description": "Append-only. `granted` is derived from `consent_type`. WhatsApp requires WHATSAPP_OPT_IN / WHATSAPP_OPT_OUT. Send the end user's `ip_address` and `user_agent`.",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordConsentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Consent event recorded"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "422": {
+            "description": "Invalid consent event"
+          }
+        },
+        "tags": [
+          "compliance"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "ConsentController_history",
+        "summary": "Full consent history for a user (newest first)",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "sms",
+                "email",
+                "push",
+                "whatsapp",
+                "in_app"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "compliance"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{userId}/consents/status": {
+      "get": {
+        "operationId": "ConsentController_status",
+        "summary": "Current consent per channel",
+        "description": "The latest record per channel decides. `none` = never asked.",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "compliance"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/compliance/audit/sms": {
+      "get": {
+        "operationId": "ComplianceAuditController_sms",
+        "summary": "SMS audit trail with proof that DND was checked before each send",
+        "description": "Challenge B2.3. Window defaults to the last 90 days (maximum 90). `summary.sent_without_dnd_check` must be 0.",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "ISO-8601; default: 90 days before `to`",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "ISO-8601; default: now",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "compliance"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/compliance/audit/promotional-consent": {
+      "get": {
+        "operationId": "ComplianceAuditController_promotionalConsent",
+        "summary": "Consent record behind every promotional message sent",
+        "description": "Challenge B2.3. `consent_missing: true` rows are compliance findings.",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "ISO-8601; default: 90 days before `to`",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "ISO-8601; default: now",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "compliance"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/users/{userId}/preferences": {
@@ -57,15 +345,28 @@
             "name": "userId",
             "required": true,
             "in": "path",
-            "schema": { "format": "uuid", "type": "string" }
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "Preferences retrieved" },
-          "404": { "description": "User not found" }
+          "200": {
+            "description": "Preferences retrieved"
+          },
+          "404": {
+            "description": "User not found"
+          }
         },
-        "tags": ["preferences"],
-        "security": [{ "JWT": [] }]
+        "tags": [
+          "preferences"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       },
       "put": {
         "operationId": "PreferencesController_updatePreferences",
@@ -76,24 +377,339 @@
             "name": "userId",
             "required": true,
             "in": "path",
-            "schema": { "format": "uuid", "type": "string" }
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/UpdatePreferenceDto" }
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferenceDto"
+              }
             }
           }
         },
         "responses": {
-          "200": { "description": "Preferences updated" },
-          "404": { "description": "User not found" },
-          "422": { "description": "Validation failed" }
+          "200": {
+            "description": "Preferences updated"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
         },
-        "tags": ["preferences"],
-        "security": [{ "JWT": [] }]
+        "tags": [
+          "preferences"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "operationId": "UsersController_list",
+        "summary": "Search or list users",
+        "description": "Matches `search` against the user name (case-insensitive, partial) or an exact user ID. Returns no contact details — only what is needed to pick a user (id, name, market, language, account type).",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Matches a name (case-insensitive, partial) or an exact user ID",
+            "schema": {
+              "example": "ngozi",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Users matching the query"
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "MeController_me",
+        "summary": "My profile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/preferences": {
+      "get": {
+        "operationId": "MeController_getPreferences",
+        "summary": "My notification preferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "MeController_updatePreferences",
+        "summary": "Update my notification preferences",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/consents": {
+      "get": {
+        "operationId": "MeController_consentHistory",
+        "summary": "My consent history (newest first)",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "sms",
+                "email",
+                "push",
+                "whatsapp",
+                "in_app"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "MeController_recordConsent",
+        "summary": "Record my own consent (opt in or out)",
+        "description": "Append-only, same as the ops endpoint. IP address and user agent are always taken from this request, never from the body.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordConsentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/consents/status": {
+      "get": {
+        "operationId": "MeController_consentStatus",
+        "summary": "My current consent, per channel",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/notifications": {
+      "get": {
+        "operationId": "MeController_notificationsForMe",
+        "summary": "My notifications (newest first)",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/notifications/{notificationId}/read": {
+      "patch": {
+        "operationId": "MeController_markRead",
+        "summary": "Mark one of my notifications as read",
+        "parameters": [
+          {
+            "name": "notificationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/notifications/{notificationId}": {
@@ -105,15 +721,28 @@
             "name": "notificationId",
             "required": true,
             "in": "path",
-            "schema": { "format": "uuid", "type": "string" }
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "Notification details" },
-          "404": { "description": "Not found" }
+          "200": {
+            "description": "Notification details"
+          },
+          "404": {
+            "description": "Not found"
+          }
         },
-        "tags": ["notifications"],
-        "security": [{ "JWT": [] }]
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/users/{userId}/notifications": {
@@ -125,13 +754,20 @@
             "name": "userId",
             "required": true,
             "in": "path",
-            "schema": { "format": "uuid", "type": "string" }
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
           },
           {
             "name": "page",
             "required": false,
             "in": "query",
-            "schema": { "minimum": 1, "default": 1, "type": "number" }
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
           },
           {
             "name": "limit",
@@ -145,21 +781,36 @@
             }
           }
         ],
-        "responses": { "200": { "description": "" } },
-        "tags": ["notifications"],
-        "security": [{ "JWT": [] }]
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/dlq": {
       "get": {
         "operationId": "NotificationsController_getDlq",
         "summary": "List unresolved dead letter queue entries",
+        "description": "Filter by `classification` (TRANSIENT | PERMANENT | CONFIGURATION) and/or `reason` (substring of the failure reason or error code).",
         "parameters": [
           {
             "name": "page",
             "required": false,
             "in": "query",
-            "schema": { "minimum": 1, "default": 1, "type": "number" }
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
           },
           {
             "name": "limit",
@@ -171,11 +822,43 @@
               "default": 20,
               "type": "number"
             }
+          },
+          {
+            "name": "classification",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "TRANSIENT",
+                "PERMANENT",
+                "CONFIGURATION"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "reason",
+            "required": false,
+            "in": "query",
+            "description": "Case-insensitive match on the failure reason or error code",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
-        "responses": { "200": { "description": "" } },
-        "tags": ["notifications"],
-        "security": [{ "JWT": [] }]
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/dlq/{dlqId}/resolve": {
@@ -187,12 +870,175 @@
             "name": "dlqId",
             "required": true,
             "in": "path",
-            "schema": { "format": "uuid", "type": "string" }
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
           }
         ],
-        "responses": { "200": { "description": "" } },
-        "tags": ["notifications"],
-        "security": [{ "JWT": [] }]
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveDlqDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/notifications/{notificationId}/read": {
+      "patch": {
+        "operationId": "NotificationsController_markAsRead",
+        "summary": "Mark a notification as read",
+        "parameters": [
+          {
+            "name": "notificationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Marked as read"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{userId}/data": {
+      "delete": {
+        "operationId": "NotificationsController_eraseUserData",
+        "summary": "GDPR right-to-erasure — anonymise all data for a user",
+        "description": "Scrubs personalisation_data from all notification records, deletes consent records, and anonymises the user row. Metadata (event_type, channel, status, timestamps) is retained for analytics as permitted by legitimate interest. Requires ADMIN role.",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Erasure completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "notifications_scrubbed": 1247,
+                    "consent_records_deleted": 3,
+                    "user_anonymised": true
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/notifications/preview": {
+      "post": {
+        "operationId": "NotificationPreviewController_preview",
+        "summary": "Preview a notification without sending it",
+        "description": "Renders the notification exactly as the user would receive it across all enabled channels, including A/B variant and locale, without persisting or queuing anything. No side effects.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewNotificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/templates/{eventType}/ab-performance": {
+      "get": {
+        "operationId": "AbTestingController_getPerformance",
+        "summary": "Get A/B variant performance for an event type",
+        "description": "Returns exposure count, delivery rate, and read rate per template variant. Used to decide whether to promote a variant to control.",
+        "parameters": [
+          {
+            "name": "eventType",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "SIPX-001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "templates"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/analytics/delivery-rates": {
@@ -206,12 +1052,25 @@
             "required": false,
             "in": "query",
             "description": "Period in days (default: 7)",
-            "schema": { "example": "7d", "type": "string" }
+            "schema": {
+              "example": "7d",
+              "type": "string"
+            }
           }
         ],
-        "responses": { "200": { "description": "Delivery rate report" } },
-        "tags": ["analytics"],
-        "security": [{ "JWT": [] }]
+        "responses": {
+          "200": {
+            "description": "Delivery rate report"
+          }
+        },
+        "tags": [
+          "analytics"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/analytics/channel-performance": {
@@ -223,12 +1082,25 @@
             "name": "period",
             "required": false,
             "in": "query",
-            "schema": { "example": "7d", "type": "string" }
+            "schema": {
+              "example": "7d",
+              "type": "string"
+            }
           }
         ],
-        "responses": { "200": { "description": "Channel performance report" } },
-        "tags": ["analytics"],
-        "security": [{ "JWT": [] }]
+        "responses": {
+          "200": {
+            "description": "Channel performance report"
+          }
+        },
+        "tags": [
+          "analytics"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/analytics/opt-out-trends": {
@@ -241,12 +1113,25 @@
             "name": "period",
             "required": false,
             "in": "query",
-            "schema": { "example": "30d", "type": "string" }
+            "schema": {
+              "example": "30d",
+              "type": "string"
+            }
           }
         ],
-        "responses": { "200": { "description": "Opt-out trend data" } },
-        "tags": ["analytics"],
-        "security": [{ "JWT": [] }]
+        "responses": {
+          "200": {
+            "description": "Opt-out trend data"
+          }
+        },
+        "tags": [
+          "analytics"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/analytics/realtime": {
@@ -255,9 +1140,19 @@
         "summary": "Get real-time notification counters",
         "description": "Returns live counters with < 30 second lag. Sourced from Redis sliding window counters.",
         "parameters": [],
-        "responses": { "200": { "description": "Real-time stats" } },
-        "tags": ["analytics"],
-        "security": [{ "JWT": [] }]
+        "responses": {
+          "200": {
+            "description": "Real-time stats"
+          }
+        },
+        "tags": [
+          "analytics"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
       }
     },
     "/api/v1/events": {
@@ -271,14 +1166,18 @@
             "required": false,
             "in": "header",
             "description": "Optional correlation ID for distributed tracing",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/IngestEventDto" }
+              "schema": {
+                "$ref": "#/components/schemas/IngestEventDto"
+              }
             }
           }
         },
@@ -289,58 +1188,457 @@
               "application/json": {
                 "schema": {
                   "example": {
-                    "notificationId": "ntf_98765432-abcd-1234-ef56-789012345678",
-                    "eventId": "EVT-2025-03-19-MC-847291",
+                    "notification_id": "ntf_98765432-abcd-1234-ef56-789012345678",
+                    "event_id": "EVT-2025-03-19-MC-847291",
                     "status": "CREATED",
-                    "estimatedDeliveryMs": 3000,
-                    "createdAt": "2025-03-19T10:15:23.512Z"
+                    "channels_targeted": [
+                      "sms",
+                      "push",
+                      "in_app"
+                    ],
+                    "estimated_delivery_ms": 3000,
+                    "created_at": "2025-03-19T10:15:23.512Z"
                   }
                 }
               }
             }
           },
-          "404": { "description": "User not found" },
+          "404": {
+            "description": "User not found"
+          },
           "409": {
             "description": "Duplicate event — idempotency key already processed"
           },
-          "422": { "description": "Validation failed" }
+          "422": {
+            "description": "Validation failed"
+          }
         },
-        "tags": ["events"],
-        "security": [{ "JWT": [] }]
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "summary": "Obtain a JWT access token",
+        "description": "Authenticates using a service key and returns a short-lived JWT (1h) plus a refresh token. Roles: ADMIN (full access), OPERATOR (read-only), SERVICE (m2m).",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "access_token": "eyJ...",
+                    "refresh_token": "eyJ...",
+                    "token_type": "Bearer",
+                    "expires_in": 3600
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service key"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "summary": "Refresh an access token using a refresh token",
+        "description": "Issues a new short-lived JWT. Rotates the refresh token.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token refreshed"
+          },
+          "401": {
+            "description": "Invalid or expired refresh token"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/otp/request": {
+      "post": {
+        "operationId": "UserAuthController_request",
+        "summary": "Request a login code, by SMS or email",
+        "description": "Provide exactly one of `phone` (SMS) or `email`. Always returns the same shape whether or not the identifier belongs to an account — this endpoint cannot be used to check which phone numbers or emails are registered.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestOtpDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A code was requested"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/otp/verify": {
+      "post": {
+        "operationId": "UserAuthController_verify",
+        "summary": "Verify a login code and receive a USER token",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyOtpDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token issued"
+          },
+          "401": {
+            "description": "Incorrect or expired code"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/signup/request": {
+      "post": {
+        "operationId": "SignupController_request",
+        "summary": "Start creating an account: request a verification code",
+        "description": "Provide a name and exactly one of `phone` (SMS) or `email`. Unlike /auth/otp/request, this DOES say if the identifier is already registered (409) — you cannot sign up twice with the same phone/email.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestSignupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A code was sent"
+          },
+          "409": {
+            "description": "That phone/email is already registered"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/signup/verify": {
+      "post": {
+        "operationId": "SignupController_verify",
+        "summary": "Finish creating the account and receive a USER token",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifySignupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Account created, token issued"
+          },
+          "401": {
+            "description": "Incorrect or expired code"
+          },
+          "409": {
+            "description": "Someone else registered this identifier first"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/webhooks/dlr/sms/msg91": {
+      "post": {
+        "operationId": "WebhookDlrController_msg91Dlr",
+        "summary": "MSG91 SMS delivery receipt callback",
+        "description": "Receives delivery status callbacks from MSG91. Validates HMAC-SHA256 signature before processing.",
+        "parameters": [
+          {
+            "name": "x-msg91-signature",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "DLR processed"
+          },
+          "401": {
+            "description": "Invalid signature"
+          }
+        },
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/api/webhooks/dlr/sms/twilio": {
+      "post": {
+        "operationId": "WebhookDlrController_twilioDlr",
+        "summary": "Twilio SMS status callback",
+        "description": "Receives delivery status callbacks from Twilio. Validates Twilio HMAC-SHA1 signature before processing.",
+        "parameters": [
+          {
+            "name": "x-twilio-signature",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "DLR processed"
+          },
+          "401": {
+            "description": "Invalid signature"
+          }
+        },
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/api/webhooks/dlr/push/fcm": {
+      "post": {
+        "operationId": "WebhookDlrController_fcmDlr",
+        "summary": "FCM push delivery / read receipt callback",
+        "description": "Receives push delivery and read receipts forwarded from the mobile SDK. Validates HMAC-SHA256 signature.",
+        "parameters": [
+          {
+            "name": "x-fcm-signature",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "DLR processed"
+          },
+          "401": {
+            "description": "Invalid signature"
+          }
+        },
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/api/webhooks/dlr/whatsapp": {
+      "post": {
+        "operationId": "WebhookDlrController_whatsappDlr",
+        "summary": "WhatsApp Cloud API status webhook",
+        "description": "Receives delivery status updates from Meta WhatsApp Cloud API. Validates X-Hub-Signature-256 header.",
+        "parameters": [
+          {
+            "name": "x-hub-signature-256",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "DLR processed"
+          },
+          "401": {
+            "description": "Invalid signature"
+          }
+        },
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/api/webhooks/payments/{provider}": {
+      "post": {
+        "operationId": "PaymentsController_receive",
+        "summary": "Receive an inbound-payment webhook",
+        "description": "Verifies the provider signature, then raises a TXNX-005 (Funds Deposited) event. Providers: paystack, flutterwave, opay, interswitch.",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "paystack",
+                "flutterwave",
+                "opay",
+                "interswitch"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted or deliberately ignored"
+          },
+          "401": {
+            "description": "Invalid signature"
+          }
+        },
+        "tags": [
+          "webhooks"
+        ]
       }
     }
   },
   "info": {
     "title": "WealthBridge Notification Engine",
-    "description": "Event-driven notification system for financial services — 25+ event types, 5 delivery channels, TRAI DND compliance",
+    "description": "Event-driven notification system for financial services — 25 event types, 5 delivery channels, TRAI/NCC DND compliance, consent management, digests. Requests and responses are snake_case; errors use { error, message, details, request_id }.",
     "version": "1.0.0",
     "contact": {}
   },
-  "tags": [
-    { "name": "events", "description": "Financial event ingestion" },
+  "tags": [],
+  "servers": [
     {
-      "name": "notifications",
-      "description": "Notification lifecycle management"
-    },
-    { "name": "preferences", "description": "User notification preferences" },
-    { "name": "analytics", "description": "Delivery metrics and reporting" },
-    { "name": "compliance", "description": "DND and regulatory audit" },
-    { "name": "health", "description": "System health and readiness" }
+      "url": "http://localhost:3000",
+      "description": "Local development"
+    }
   ],
-  "servers": [],
   "components": {
     "securitySchemes": {
-      "JWT": { "scheme": "bearer", "bearerFormat": "JWT", "type": "http" }
+      "JWT": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
     },
     "schemas": {
+      "RecordConsentBody": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "sms",
+              "email",
+              "push",
+              "whatsapp",
+              "in_app"
+            ],
+            "example": "whatsapp"
+          },
+          "consentType": {
+            "type": "string",
+            "enum": [
+              "OPT_IN",
+              "OPT_OUT",
+              "WHATSAPP_OPT_IN",
+              "WHATSAPP_OPT_OUT"
+            ],
+            "description": "WhatsApp needs its own opt-in (WHATSAPP_OPT_IN / WHATSAPP_OPT_OUT) under the WhatsApp Business Policy; every other channel uses OPT_IN / OPT_OUT."
+          },
+          "consentText": {
+            "type": "string",
+            "description": "The exact wording shown to the user when they consented. Stored verbatim as evidence.",
+            "example": "I agree to receive investment updates from WealthBridge on WhatsApp."
+          },
+          "ipAddress": {
+            "type": "string",
+            "description": "The END USER's IP address (callers are usually a backend service, so it cannot be inferred). Falls back to the request IP.",
+            "example": "197.210.10.4"
+          },
+          "userAgent": {
+            "type": "string",
+            "description": "The end user's browser / app user agent"
+          }
+        },
+        "required": [
+          "channel",
+          "consentType",
+          "consentText"
+        ]
+      },
       "ChannelPreferencesDto": {
         "type": "object",
         "properties": {
-          "sms": { "type": "boolean" },
-          "email": { "type": "boolean" },
-          "push": { "type": "boolean" },
-          "whatsapp": { "type": "boolean" },
-          "in_app": { "type": "boolean" }
+          "sms": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "boolean"
+          },
+          "push": {
+            "type": "boolean"
+          },
+          "whatsapp": {
+            "type": "boolean"
+          },
+          "in_app": {
+            "type": "boolean"
+          }
         }
       },
       "UpdatePreferenceDto": {
@@ -351,26 +1649,100 @@
             "example": "TXNX",
             "description": "Event category code e.g. TXNX, RISK, SIPX, MKTX, REGX"
           },
-          "eventType": { "type": "string" },
-          "channels": { "$ref": "#/components/schemas/ChannelPreferencesDto" },
+          "eventType": {
+            "type": "string"
+          },
+          "channels": {
+            "$ref": "#/components/schemas/ChannelPreferencesDto"
+          },
           "digestMode": {
             "type": "string",
-            "enum": ["IMMEDIATE", "HOURLY", "DAILY"]
+            "enum": [
+              "IMMEDIATE",
+              "HOURLY",
+              "DAILY"
+            ]
           },
-          "quietHoursStart": { "type": "string", "example": "22:00" },
-          "quietHoursEnd": { "type": "string", "example": "07:30" }
+          "quietHoursStart": {
+            "type": "string",
+            "example": "22:00"
+          },
+          "quietHoursEnd": {
+            "type": "string",
+            "example": "07:30"
+          }
         },
-        "required": ["category", "channels"]
+        "required": [
+          "category",
+          "channels"
+        ]
+      },
+      "ResolveDlqDto": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "retry",
+              "discard"
+            ]
+          },
+          "resolvedBy": {
+            "type": "string",
+            "description": "Operator identifier; defaults to \"operator\"."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "PreviewNotificationDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "example": "a3f1c2e0-..."
+          },
+          "eventType": {
+            "type": "string",
+            "example": "RISK-001"
+          },
+          "payload": {
+            "type": "object",
+            "example": {
+              "symbol": "RELIANCE",
+              "amount": 50000,
+              "marginShortfall": 12500
+            },
+            "description": "Same payload shape as the real event ingestion endpoint"
+          },
+          "localeOverride": {
+            "type": "string",
+            "example": "hi",
+            "description": "Override the user's stored language preference for this preview only"
+          }
+        },
+        "required": [
+          "userId",
+          "eventType",
+          "payload"
+        ]
       },
       "IngestEventDto": {
         "type": "object",
         "properties": {
-          "eventType": { "type": "string", "example": "RISK-001" },
+          "eventType": {
+            "type": "string",
+            "example": "RISK-001"
+          },
           "eventId": {
             "type": "string",
             "example": "EVT-2025-03-19-MC-847291"
           },
-          "sourceSystem": { "type": "string", "example": "margin_engine" },
+          "sourceSystem": {
+            "type": "string",
+            "example": "margin_engine"
+          },
           "timestamp": {
             "type": "string",
             "example": "2025-03-19T10:15:23.456Z"
@@ -406,6 +1778,30 @@
           "userId",
           "payload"
         ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RefreshDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestOtpDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "VerifyOtpDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestSignupDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "VerifySignupDto": {
+        "type": "object",
+        "properties": {}
       }
     }
   }

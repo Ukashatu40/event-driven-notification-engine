@@ -30,6 +30,7 @@ export class WhatsAppProvider implements IDeliveryProvider {
       return {
         success: true,
         externalId: `mock_wa_${Date.now()}`,
+        receipt: 'simulated' as const,
         provider: this.providerName,
         latencyMs: Date.now() - start,
       };

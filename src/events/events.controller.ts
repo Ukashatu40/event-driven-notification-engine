@@ -16,6 +16,7 @@ import {
 } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { IngestEventDto } from '../notifications/dto/ingest-event.dto';
+import { Roles } from '../api/decorators/roles.decorator';
 
 @ApiTags('events')
 @ApiBearerAuth('JWT')
@@ -23,6 +24,7 @@ import { IngestEventDto } from '../notifications/dto/ingest-event.dto';
 export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 
+  @Roles('SERVICE', 'ADMIN')
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
@@ -43,11 +45,12 @@ export class EventsController {
     description: 'Event accepted for processing',
     schema: {
       example: {
-        notificationId: 'ntf_98765432-abcd-1234-ef56-789012345678',
-        eventId: 'EVT-2025-03-19-MC-847291',
+        notification_id: 'ntf_98765432-abcd-1234-ef56-789012345678',
+        event_id: 'EVT-2025-03-19-MC-847291',
         status: 'CREATED',
-        estimatedDeliveryMs: 3000,
-        createdAt: '2025-03-19T10:15:23.512Z',
+        channels_targeted: ['sms', 'push', 'in_app'],
+        estimated_delivery_ms: 3000,
+        created_at: '2025-03-19T10:15:23.512Z',
       },
     },
   })

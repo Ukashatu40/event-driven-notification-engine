@@ -12,16 +12,24 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { sanitizeForLog } from '../utils/pii-masker.util';
 
+/** Error body, spec Appendix A: { error, message, details?, request_id } (+ diagnostics). */
 interface ErrorResponse {
   error: string;
   message: string;
-  statusCode: number;
-  requestId: string;
-  correlationId: string;
+  details?: unknown;
+  request_id: string;
+  status_code: number;
+  correlation_id: string;
   timestamp: string;
   path: string;
-  details?: unknown;
 }
+
+/** "Not Found" → "NOT_FOUND"; already-coded values (VALIDATION_FAILED) pass through. */
+const toErrorCode = (value: string): string =>
+  value
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .toUpperCase();
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -50,9 +58,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const response = exception.getResponse();
       if (typeof response === 'object' && response !== null) {
         const r = response as Record<string, unknown>;
-        errorBody = (r['error'] as string) ?? 'HTTP_ERROR';
-        message = (r['message'] as string) ?? exception.message;
-        details = r['details'];
+        errorBody = toErrorCode((r['error'] as string) ?? 'HTTP_ERROR');
+        // Nest's built-in 400s carry `message` as string[]; keep a string here
+        // and surface the list as details.
+        const raw = r['message'];
+        message = Array.isArray(raw)
+          ? 'Request validation failed'
+          : ((raw as string) ?? exception.message);
+        details = r['details'] ?? (Array.isArray(raw) ? raw : undefined);
       } else {
         errorBody = 'HTTP_ERROR';
         message = String(response);
@@ -71,12 +84,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const responseBody: ErrorResponse = {
       error: errorBody,
       message,
-      statusCode,
-      requestId,
-      correlationId,
+      ...(details !== undefined && { details }),
+      request_id: requestId,
+      status_code: statusCode,
+      correlation_id: correlationId,
       timestamp: new Date().toISOString(),
       path: request.url,
-      ...(details !== undefined && { details }),
     };
 
     // Log with sanitized context — never log PII

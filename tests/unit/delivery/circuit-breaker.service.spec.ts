@@ -1,4 +1,9 @@
 // tests/unit/delivery/circuit-breaker.service.spec.ts
+// Mock PrismaService before any imports to avoid @prisma/client being required
+jest.mock('../../../src/infrastructure/database/prisma.service', () => ({
+  PrismaService: class MockPrismaService {},
+}));
+
 import { CircuitBreakerService } from '../../../src/delivery/circuit-breaker/circuit-breaker.service';
 import { RedisService } from '../../../src/infrastructure/redis/redis.service';
 import { PrismaService } from '../../../src/infrastructure/database/prisma.service';
@@ -11,11 +16,14 @@ const mockRedis = {
   increment: jest.fn(),
 } as unknown as RedisService;
 
-const mockPrisma = {
+// Cast to any to avoid Prisma generated-type errors (client is generated at runtime)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockPrismaRaw: any = {
   providerHealth: {
     upsert: jest.fn(),
   },
-} as unknown as PrismaService;
+};
+const mockPrisma = mockPrismaRaw as unknown as PrismaService;
 
 const mockPrometheus = {
   setCircuitState: jest.fn(),
@@ -54,9 +62,7 @@ describe('CircuitBreakerService', () => {
         .mockResolvedValueOnce(String(Date.now() - 120_000)) // 2 min ago > 60s threshold
         .mockResolvedValueOnce('OPEN'); // for transition check
       jest.mocked(mockRedis.set).mockResolvedValue(undefined);
-      jest
-        .mocked(mockPrisma.providerHealth.upsert)
-        .mockResolvedValue({} as never);
+      jest.mocked(mockPrismaRaw.providerHealth.upsert).mockResolvedValue({});
 
       const result = await service.allowRequest('msg91');
       expect(result).toBe(true);
@@ -75,9 +81,7 @@ describe('CircuitBreakerService', () => {
       jest.mocked(mockRedis.get).mockResolvedValue('CLOSED');
       jest.mocked(mockRedis.increment).mockResolvedValue(5); // threshold reached
       jest.mocked(mockRedis.set).mockResolvedValue(undefined);
-      jest
-        .mocked(mockPrisma.providerHealth.upsert)
-        .mockResolvedValue({} as never);
+      jest.mocked(mockPrismaRaw.providerHealth.upsert).mockResolvedValue({});
 
       await service.recordFailure('msg91');
 
@@ -104,9 +108,7 @@ describe('CircuitBreakerService', () => {
       jest.mocked(mockRedis.increment).mockResolvedValue(2); // meets success threshold
       jest.mocked(mockRedis.del).mockResolvedValue(undefined);
       jest.mocked(mockRedis.set).mockResolvedValue(undefined);
-      jest
-        .mocked(mockPrisma.providerHealth.upsert)
-        .mockResolvedValue({} as never);
+      jest.mocked(mockPrismaRaw.providerHealth.upsert).mockResolvedValue({});
 
       await service.recordSuccess('msg91');
 

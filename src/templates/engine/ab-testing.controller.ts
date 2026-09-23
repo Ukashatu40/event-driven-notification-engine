@@ -7,6 +7,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AbTestingService } from './ab-testing.service';
+import { Roles } from '../../api/decorators/roles.decorator';
 
 @ApiTags('templates')
 @ApiBearerAuth('JWT')
@@ -14,6 +15,7 @@ import { AbTestingService } from './ab-testing.service';
 export class AbTestingController {
   constructor(private readonly abTesting: AbTestingService) {}
 
+  @Roles('ADMIN', 'OPERATOR')
   @Get(':eventType/ab-performance')
   @ApiOperation({
     summary: 'Get A/B variant performance for an event type',

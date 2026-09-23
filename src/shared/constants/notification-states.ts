@@ -15,6 +15,12 @@ export enum NotificationStatus {
   DLQ = 'DLQ',
   DEDUPLICATED = 'DEDUPLICATED',
   BOUNCED = 'BOUNCED',
+  /** Blocked at dispatch: no valid consent on record. */
+  NO_CONSENT = 'NO_CONSENT',
+  /** Held for a digest. */
+  DIGEST_PENDING = 'DIGEST_PENDING',
+  /** Delivered as part of a digest notification. */
+  DIGESTED = 'DIGESTED',
 }
 
 export const VALID_TRANSITIONS: Partial<
@@ -29,11 +35,28 @@ export const VALID_TRANSITIONS: Partial<
     NotificationStatus.CAPPED,
     NotificationStatus.QUIET,
     NotificationStatus.DND,
+    NotificationStatus.DIGEST_PENDING,
   ],
-  [NotificationStatus.ROUTED]: [NotificationStatus.QUEUED],
+  [NotificationStatus.ROUTED]: [
+    NotificationStatus.QUEUED,
+    NotificationStatus.FAILED,
+  ],
+  // A deferred notification (quiet hours / send-time optimisation) is
+  // released back into the pipeline at ROUTED once its window opens.
+  [NotificationStatus.QUIET]: [
+    NotificationStatus.ROUTED,
+    NotificationStatus.DIGEST_PENDING,
+  ],
+  // Notifications suppressed by a frequency cap can be swept into a digest
+  // (spec Appendix B: "if user has 3+ capped notifications, batch into a digest").
+  [NotificationStatus.CAPPED]: [NotificationStatus.DIGEST_PENDING],
+  [NotificationStatus.DIGEST_PENDING]: [NotificationStatus.DIGESTED],
+  // DND is checked at dispatch (ADR-004), i.e. from QUEUED, not at routing.
   [NotificationStatus.QUEUED]: [
     NotificationStatus.SENT,
     NotificationStatus.FAILED,
+    NotificationStatus.DND,
+    NotificationStatus.NO_CONSENT,
   ],
   [NotificationStatus.SENT]: [
     NotificationStatus.DELIVERED,

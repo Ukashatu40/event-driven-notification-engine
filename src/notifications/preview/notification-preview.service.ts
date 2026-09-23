@@ -11,6 +11,7 @@ import { EventType } from '../../shared/constants/event-types';
 import { Channel, ALL_CHANNELS } from '../../shared/constants/channels';
 import { Priority } from '../../shared/constants/priorities';
 import { type SupportedLocale } from '../../shared/utils/currency.util';
+import { getMarketProfile } from '../../shared/markets/market-profiles';
 
 export interface ChannelPreview {
   channel: Channel;
@@ -116,6 +117,11 @@ export class NotificationPreviewService {
             userName: user.name,
             language: locale,
             timezone: user.timezone,
+            // Was missing entirely, so buildContext() silently defaulted to
+            // INR for every preview regardless of the user's market — the
+            // real send path (notification-engine.service.ts) always passes
+            // this; preview must match it to show what would actually send.
+            currency: getMarketProfile(user.market).currency,
             payload,
           },
         );

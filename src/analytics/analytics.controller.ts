@@ -16,6 +16,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
+import { Roles } from '../api/decorators/roles.decorator';
 
 @ApiTags('analytics')
 @ApiBearerAuth('JWT')
@@ -23,6 +24,7 @@ import { AnalyticsService } from './analytics.service';
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
+  @Roles('ADMIN', 'OPERATOR')
   @Get('delivery-rates')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -46,6 +48,7 @@ export class AnalyticsController {
     return this.analyticsService.getDeliveryRates(days);
   }
 
+  @Roles('ADMIN', 'OPERATOR')
   @Get('channel-performance')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -60,6 +63,7 @@ export class AnalyticsController {
     return this.analyticsService.getChannelPerformance(days);
   }
 
+  @Roles('ADMIN', 'OPERATOR')
   @Get('opt-out-trends')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -76,6 +80,7 @@ export class AnalyticsController {
     return this.analyticsService.getOptOutTrends(days);
   }
 
+  @Roles('ADMIN', 'OPERATOR')
   @Get('realtime')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

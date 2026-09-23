@@ -7,6 +7,9 @@ export const redisConfig = registerAs('redis', () => ({
   port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
   password: process.env.REDIS_PASSWORD ?? '',
   db: parseInt(process.env.REDIS_DB ?? '0', 10),
+  // Explicit, like KAFKA_SSL — never inferred from NODE_ENV. Needed for a
+  // managed TLS-only Redis (e.g. Upstash); the bundled compose Redis is plaintext.
+  tls: process.env.REDIS_TLS === 'true',
   // Connection options tuned for high-throughput frequency capping
   connectTimeout: 10_000,
   commandTimeout: 5_000,

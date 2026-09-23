@@ -1,12 +1,13 @@
 // src/templates/engine/template-engine.service.ts
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as Handlebars from 'handlebars';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { PersonalisationService } from './personalisation.service';
 import { SmsTruncationService } from './sms-truncation.service';
 import { type SupportedLocale } from '../../shared/utils/currency.util';
 import { type Channel } from '../../shared/constants/channels';
+import { NG_LOCALISATIONS } from '../definitions/ng-localisations';
 
 export interface TemplateDefinition {
   templateId: string;
@@ -62,6 +63,16 @@ export class TemplateEngineService implements OnModuleInit {
     private readonly personalisation: PersonalisationService,
     private readonly smsTruncation: SmsTruncationService,
   ) {}
+
+  /**
+   * True when the event's template defines content for this channel. The
+   * engine uses it to skip channels a template cannot serve (e.g. MKTX-003 is
+   * push/in-app only) instead of dead-lettering a send that can never render.
+   */
+  supportsChannel(eventType: string, channel: Channel): boolean {
+    const template = this.templates.get(`${eventType}-v1`);
+    return template ? Boolean(template.channels[channel]) : false;
+  }
 
   onModuleInit(): void {
     this.registerHelpers();
@@ -126,7 +137,7 @@ export class TemplateEngineService implements OnModuleInit {
     ctx: Record<string, unknown>,
   ): RenderResult {
     const compiled = this.compile(def.body);
-    const raw = compiled(ctx);
+    const raw = this.smsTruncation.toSmsSafe(compiled(ctx));
     const body = this.smsTruncation.truncate(raw);
 
     return {
@@ -251,31 +262,113 @@ export class TemplateEngineService implements OnModuleInit {
       this.templates.set(def.templateId, def);
     }
 
-    // Override with file-based definitions if they exist
+    // Override with file-based definitions if they exist. Each file is loaded on
+    // its own: one malformed file must not stop the others (it used to abort the
+    // whole directory and silently fall back to the inline copies). Leading
+    // `//` comment lines are tolerated so a file can say where it came from.
     if (existsSync(definitionsDir)) {
-      try {
-        const files = require('fs')
-          .readdirSync(definitionsDir)
-          .filter((f: string) => f.endsWith('.json'));
-
-        for (const file of files) {
-          const content = readFileSync(join(definitionsDir, file), 'utf-8');
-          const def = JSON.parse(content) as TemplateDefinition;
+      let loaded = 0;
+      for (const file of readdirSync(definitionsDir)) {
+        if (!file.endsWith('.json')) continue;
+        try {
+          const raw = readFileSync(join(definitionsDir, file), 'utf-8');
+          const def = JSON.parse(
+            raw.replace(/^\s*\/\/.*$/gm, ''),
+          ) as TemplateDefinition;
           this.templates.set(def.templateId, def);
+          loaded++;
+        } catch (err) {
+          this.logger.error(
+            `Skipping invalid template definition ${file}: ${(err as Error).message}`,
+          );
         }
-
-        this.logger.log(`Loaded ${files.length} templates from disk`);
-      } catch (err) {
-        this.logger.warn(
-          `Could not load templates from disk: ${(err as Error).message}`,
-        );
       }
+      this.logger.log(`Loaded ${loaded} template definition file(s) from disk`);
+    }
+
+    // System templates: not business events, so not in the templates table.
+    const digest = this.digestTemplate();
+    this.templates.set(digest.templateId, digest);
+
+    this.applyLocalisations(NG_LOCALISATIONS);
+  }
+
+  /**
+   * The digest ("N updates") notification. Delivered on push and in-app only: no
+   * SMS cost, no DND or consent gate. `items` holds one already-rendered line per
+   * folded notification (at most 5) and `more` how many did not fit.
+   */
+  private digestTemplate(): TemplateDefinition {
+    const body =
+      '{{#each items}}• {{text}}{{#unless @last}}\n{{/unless}}{{/each}}' +
+      '{{#if more}}\n… +{{more}}{{/if}}';
+    return {
+      templateId: 'DIGEST-v1',
+      eventType: 'DIGEST',
+      version: 1,
+      channels: {
+        push: {
+          title: '{{count}} updates from {{app_name}}',
+          body,
+          data: { action: 'open_inbox' },
+        },
+        in_app: {
+          title: '{{count}} updates',
+          body,
+          action: 'open_inbox',
+        },
+      },
+      localisations: {
+        hi: {
+          push: { title: '{{app_name}} से {{count}} अपडेट', body },
+          in_app: { title: '{{count}} अपडेट', body },
+        },
+      },
+    };
+  }
+
+  /**
+   * Merges externally-maintained localisations (e.g. the Nigerian languages)
+   * into the registry without touching the template definitions themselves.
+   * Existing entries for the same locale/channel are overridden field by field.
+   */
+  private applyLocalisations(
+    extra: Record<
+      string,
+      Record<string, Record<string, Record<string, string>>>
+    >,
+  ): void {
+    for (const [templateId, byLocale] of Object.entries(extra)) {
+      const def = this.templates.get(templateId);
+      if (!def) continue;
+
+      const merged = (def.localisations ?? {}) as Record<
+        string,
+        Record<string, Record<string, string>>
+      >;
+      for (const [locale, byChannel] of Object.entries(byLocale)) {
+        merged[locale] ??= {};
+        for (const [channel, fields] of Object.entries(byChannel)) {
+          merged[locale][channel] = { ...merged[locale][channel], ...fields };
+        }
+      }
+      def.localisations = merged;
     }
   }
 
   private loadLocales(): void {
     const localesDir = join(process.cwd(), 'src', 'templates', 'locales');
-    const supported: SupportedLocale[] = ['en', 'hi', 'mr', 'ta', 'te'];
+    const supported: SupportedLocale[] = [
+      'en',
+      'hi',
+      'mr',
+      'ta',
+      'te',
+      'pcm',
+      'ha',
+      'yo',
+      'ig',
+    ];
 
     for (const locale of supported) {
       const filePath = join(localesDir, `${locale}.json`);
@@ -820,6 +913,485 @@ export class TemplateEngineService implements OnModuleInit {
             title: 'Regulatory Update',
             body: '{{change_summary}} — effective {{effective_date}}',
             action: 'open_regulatory_updates',
+          },
+        },
+      },
+
+      // ── TXNX-004: Dividend Credited ───────────────────────────────
+      {
+        templateId: 'TXNX-004-v1',
+        eventType: 'TXNX-004',
+        version: 1,
+        channels: {
+          sms: {
+            body: '{{company}} dividend credited: {{amount}}. -{{app_name}}',
+            senderId: 'WLTHBR',
+          },
+          email: {
+            subject: 'Dividend Credited: {{company}} — {{amount}}',
+            textBody:
+              'Dear {{user_name}}, a dividend of {{amount}} from {{company}} has been credited to your account. ' +
+              'Record date: {{record_date}}. Account: {{bank_account}}.',
+          },
+          push: {
+            title: '💰 Dividend Credited',
+            body: '{{company}}: {{amount}} credited',
+            data: { action: 'open_portfolio' },
+          },
+          in_app: {
+            title: 'Dividend Credited',
+            body: '{{company}} — {{amount}} credited on {{record_date}}',
+            action: 'open_portfolio',
+          },
+          whatsapp: {
+            templateName: 'dividend_credited_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{company}}', '{{amount}}', '{{record_date}}'],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── TXNX-005: Funds Deposited ─────────────────────────────────
+      {
+        templateId: 'TXNX-005-v1',
+        eventType: 'TXNX-005',
+        version: 1,
+        channels: {
+          sms: {
+            body:
+              'Funds Deposited: {{amount}} from {{source}}.' +
+              '{{#if available_balance}} Available balance: {{available_balance}}.{{/if}} -{{app_name}}',
+            senderId: 'WLTHBR',
+          },
+          email: {
+            subject: 'Funds Deposited: {{amount}} from {{source}}',
+            textBody:
+              'Dear {{user_name}}, {{amount}} has been deposited to your account from {{source}}.' +
+              '{{#if available_balance}} Your available balance is now {{available_balance}}.{{/if}}',
+          },
+          push: {
+            title: '✅ Funds Deposited',
+            body: '{{amount}} credited.{{#if available_balance}} Balance: {{available_balance}}{{/if}}',
+            data: { action: 'open_wallet' },
+          },
+          in_app: {
+            title: 'Funds Deposited',
+            body: '{{amount}} from {{source}}{{#if available_balance}} — Balance {{available_balance}}{{/if}}',
+            action: 'open_wallet',
+          },
+          whatsapp: {
+            templateName: 'funds_deposited_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{amount}}',
+                  '{{source}}',
+                  '{{available_balance}}',
+                ],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── RISK-003: Position Squared Off ───────────────────────────
+      {
+        templateId: 'RISK-003-v1',
+        eventType: 'RISK-003',
+        version: 1,
+        channels: {
+          sms: {
+            body: 'Positions SQUARED OFF: P&L impact {{pnl_impact}}. Remaining positions: {{remaining_positions}}. -{{app_name}}',
+          },
+          push: {
+            title: '⚠️ Position Squared Off',
+            body: 'P&L: {{pnl_impact}} | Remaining: {{remaining_positions}}',
+            data: { action: 'open_portfolio', priority: '1' },
+          },
+          email: {
+            subject: 'Positions Squared Off — P&L Impact {{pnl_impact}}',
+            textBody:
+              'Dear {{user_name}}, your positions have been squared off due to margin shortfall. ' +
+              'P&L impact: {{pnl_impact}}. Remaining positions: {{remaining_positions}}.',
+          },
+          in_app: {
+            title: 'Position Squared Off',
+            body: 'P&L: {{pnl_impact}} | Remaining: {{remaining_positions}}',
+            action: 'open_portfolio',
+          },
+          whatsapp: {
+            templateName: 'position_squared_off_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{pnl_impact}}', '{{remaining_positions}}'],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── RISK-004: Portfolio Risk Alert ───────────────────────────
+      {
+        templateId: 'RISK-004-v1',
+        eventType: 'RISK-004',
+        version: 1,
+        channels: {
+          push: {
+            title: '📊 Portfolio Risk Alert',
+            body: 'Risk metric breached: {{risk_metric}}. Review affected holdings.',
+            data: { action: 'open_risk_dashboard' },
+          },
+          email: {
+            subject: 'Portfolio Risk Alert: {{risk_metric}} Breached',
+            textBody:
+              'Dear {{user_name}}, a risk metric has been breached in your portfolio. ' +
+              'Metric: {{risk_metric}}. Affected holdings: {{affected_holdings}}. Suggestion: {{suggestion}}.',
+          },
+          in_app: {
+            title: 'Portfolio Risk Alert',
+            body: '{{risk_metric}} breached — {{suggestion}}',
+            action: 'open_risk_dashboard',
+          },
+          whatsapp: {
+            templateName: 'portfolio_risk_alert_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{risk_metric}}', '{{affected_holdings}}'],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── RISK-005: Concentration Alert ────────────────────────────
+      {
+        templateId: 'RISK-005-v1',
+        eventType: 'RISK-005',
+        version: 1,
+        channels: {
+          email: {
+            subject:
+              'Concentration Alert: {{sector_or_stock}} at {{pct_allocation}}%',
+            textBody:
+              'Dear {{user_name}}, your portfolio is over-concentrated in {{sector_or_stock}} ' +
+              'at {{pct_allocation}}% allocation. Consider rebalancing.',
+          },
+          in_app: {
+            title: 'Concentration Alert',
+            body: '{{sector_or_stock}} at {{pct_allocation}}% — consider rebalancing',
+            action: 'open_portfolio',
+          },
+          whatsapp: {
+            templateName: 'concentration_alert_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{sector_or_stock}}', '{{pct_allocation}}'],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── SIPX-003: SIP Failed ──────────────────────────────────────
+      {
+        templateId: 'SIPX-003-v1',
+        eventType: 'SIPX-003',
+        version: 1,
+        channels: {
+          sms: {
+            body: 'SIP FAILED: {{fund_name}} {{amount}}. Reason: {{reason}}. Retry: {{retry_date}}. -{{app_name}}',
+          },
+          push: {
+            title: '❌ SIP Failed',
+            body: '{{fund_name}}: {{reason}}. Retry on {{retry_date}}.',
+            data: { action: 'open_sip' },
+          },
+          email: {
+            subject: 'SIP Payment Failed: {{fund_name}}',
+            textBody:
+              'Dear {{user_name}}, your SIP payment of {{amount}} for {{fund_name}} failed. ' +
+              'Reason: {{reason}}. Next retry: {{retry_date}}. Please ensure sufficient balance.',
+          },
+          in_app: {
+            title: 'SIP Payment Failed',
+            body: '{{fund_name}} — {{reason}}. Next retry: {{retry_date}}',
+            action: 'open_sip',
+          },
+          whatsapp: {
+            templateName: 'sip_failed_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{fund_name}}', '{{reason}}', '{{retry_date}}'],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── SIPX-004: SIP Step-Up Reminder ───────────────────────────
+      {
+        templateId: 'SIPX-004-v1',
+        eventType: 'SIPX-004',
+        version: 1,
+        channels: {
+          email: {
+            subject: 'SIP Step-Up Reminder: {{fund_name}}',
+            textBody:
+              'Dear {{user_name}}, consider stepping up your SIP for {{fund_name}}. ' +
+              'Current amount: {{current_amount}}. Suggested increase: {{suggested_increase}}. ' +
+              'Goal impact: {{goal_impact}}.',
+          },
+          in_app: {
+            title: 'SIP Step-Up Suggestion',
+            body: '{{fund_name}}: increase from {{current_amount}} for better goal alignment',
+            action: 'open_sip',
+          },
+          whatsapp: {
+            templateName: 'sip_stepup_reminder_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{fund_name}}',
+                  '{{current_amount}}',
+                  '{{suggested_increase}}',
+                ],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── SIPX-005: Goal Milestone Reached ─────────────────────────
+      {
+        templateId: 'SIPX-005-v1',
+        eventType: 'SIPX-005',
+        version: 1,
+        channels: {
+          push: {
+            title: '🎯 Goal Milestone Reached!',
+            body: '{{goal_name}}: {{pct_complete}}% complete. Projected completion: {{projected_completion}}.',
+            data: { action: 'open_goals' },
+          },
+          in_app: {
+            title: 'Goal Milestone',
+            body: '{{goal_name}} is {{pct_complete}}% complete!',
+            action: 'open_goals',
+          },
+          whatsapp: {
+            templateName: 'goal_milestone_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{goal_name}}',
+                  '{{pct_complete}}',
+                  '{{projected_completion}}',
+                ],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── MKTX-003: Market Open/Close ──────────────────────────────
+      {
+        templateId: 'MKTX-003-v1',
+        eventType: 'MKTX-003',
+        version: 1,
+        channels: {
+          push: {
+            title: '🔔 Market {{market_event}}',
+            body: 'Index: {{index_level}} | Portfolio overnight change: {{overnight_change}}',
+            data: { action: 'open_markets' },
+          },
+          in_app: {
+            title: 'Market {{market_event}}',
+            body: '{{index_level}} | Overnight: {{overnight_change}}',
+            action: 'open_markets',
+          },
+          whatsapp: {
+            templateName: 'market_open_close_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{market_event}}',
+                  '{{index_level}}',
+                  '{{overnight_change}}',
+                ],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── MKTX-004: 52-Week High/Low ───────────────────────────────
+      {
+        templateId: 'MKTX-004-v1',
+        eventType: 'MKTX-004',
+        version: 1,
+        channels: {
+          push: {
+            title: '📈 52-Week {{milestone_type}}: {{stock_name}}',
+            body: '{{stock_name}} hit a new 52-week {{milestone_type}} at {{price}}. You hold {{holding_status}}.',
+            data: { action: 'open_stock', symbol: '{{symbol}}' },
+          },
+          email: {
+            subject: '52-Week {{milestone_type}}: {{stock_name}} at {{price}}',
+            textBody:
+              'Dear {{user_name}}, {{stock_name}} has reached a 52-week {{milestone_type}} at {{price}}. ' +
+              'Your holding status: {{holding_status}}.',
+          },
+          in_app: {
+            title: '52-Week {{milestone_type}}',
+            body: '{{stock_name}} — {{price}} ({{milestone_type}})',
+            action: 'open_stock',
+          },
+          whatsapp: {
+            templateName: 'week_high_low_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{stock_name}}',
+                  '{{milestone_type}}',
+                  '{{price}}',
+                ],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── MKTX-005: Earnings Announcement ──────────────────────────
+      {
+        templateId: 'MKTX-005-v1',
+        eventType: 'MKTX-005',
+        version: 1,
+        channels: {
+          email: {
+            subject:
+              'Earnings Announcement: {{company}} on {{announcement_date}}',
+            textBody:
+              'Dear {{user_name}}, {{company}} will announce earnings on {{announcement_date}}. ' +
+              'Expected EPS: {{expected_eps}}. Historical context: {{historical_context}}.',
+          },
+          in_app: {
+            title: 'Earnings Announcement',
+            body: '{{company}} — {{announcement_date}} | Expected EPS: {{expected_eps}}',
+            action: 'open_stock',
+          },
+          whatsapp: {
+            templateName: 'earnings_announcement_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  '{{company}}',
+                  '{{announcement_date}}',
+                  '{{expected_eps}}',
+                ],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── REGX-002: Nominee Update Reminder ────────────────────────
+      {
+        templateId: 'REGX-002-v1',
+        eventType: 'REGX-002',
+        version: 1,
+        channels: {
+          email: {
+            subject: 'Nominee Update Required — SEBI Circular',
+            textBody:
+              'Dear {{user_name}}, please update your nominee details as per SEBI circular. ' +
+              'Current nominee status: {{nominee_status}}. Deadline: {{deadline}}.',
+          },
+          push: {
+            title: 'Nominee Update Required',
+            body: 'Update your nominee details by {{deadline}} — SEBI requirement',
+            data: { action: 'open_profile' },
+          },
+          in_app: {
+            title: 'Nominee Update',
+            body: '{{nominee_status}} — update required by {{deadline}}',
+            action: 'open_profile',
+          },
+          whatsapp: {
+            templateName: 'nominee_update_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{nominee_status}}', '{{deadline}}'],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── REGX-003: Contract Note Generated ────────────────────────
+      {
+        templateId: 'REGX-003-v1',
+        eventType: 'REGX-003',
+        version: 1,
+        channels: {
+          email: {
+            subject: 'Contract Note Generated — {{trade_date}}',
+            textBody:
+              'Dear {{user_name}}, your contract note for trades on {{trade_date}} has been generated. ' +
+              'Summary: {{summary}}. Download link: {{download_link}}.',
+          },
+          in_app: {
+            title: 'Contract Note Ready',
+            body: 'Contract note for {{trade_date}} is available for download',
+            action: 'open_documents',
+          },
+          whatsapp: {
+            templateName: 'contract_note_v1',
+            components: [
+              {
+                type: 'body',
+                parameters: ['{{trade_date}}', '{{download_link}}'],
+              },
+            ],
+          },
+        },
+      },
+
+      // ── REGX-004: Tax Statement Available ────────────────────────
+      {
+        templateId: 'REGX-004-v1',
+        eventType: 'REGX-004',
+        version: 1,
+        channels: {
+          email: {
+            subject: 'Tax Statement Available: {{period}}',
+            textBody:
+              'Dear {{user_name}}, your tax statement for {{period}} is now available. ' +
+              'Key figures: {{key_figures}}. Download: {{download_link}}.',
+          },
+          in_app: {
+            title: 'Tax Statement Available',
+            body: '{{period}} tax statement ready — download now',
+            action: 'open_documents',
+          },
+          whatsapp: {
+            templateName: 'tax_statement_v1',
+            components: [
+              { type: 'body', parameters: ['{{period}}', '{{download_link}}'] },
+            ],
           },
         },
       },

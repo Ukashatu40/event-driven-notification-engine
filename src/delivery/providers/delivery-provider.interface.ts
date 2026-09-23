@@ -7,6 +7,13 @@ export interface DeliveryResult {
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
+  /**
+   * Set when no asynchronous delivery receipt (DLR) will ever arrive:
+   *  - 'immediate': delivery is confirmed by the send itself (in-app store);
+   *  - 'simulated': the provider ran in mock mode (no API key), so a receipt is
+   *    synthesised and clearly labelled as simulated — never in production.
+   */
+  receipt?: 'immediate' | 'simulated';
 }
 
 export interface DeliveryStatus {
@@ -36,6 +43,9 @@ export interface PreparedNotification {
   data?: Record<string, unknown>;
   priority: number;
   correlationId: string;
+  /** Set by the delivery worker from the notification record; providers with
+   *  separate transactional/promotional routes (Termii) key off it. */
+  classification?: 'TRANSACTIONAL' | 'PROMOTIONAL';
 }
 
 /**

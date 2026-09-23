@@ -275,3 +275,151 @@ The `notification_state_log` table is append-only.
 It is never updated and never deleted.
 
 This serves as the immutable audit trail required by SEBI and TRAI regulations.
+
+---
+
+## Entity-Relationship Diagram
+
+```mermaid
+erDiagram
+    users {
+        UUID id PK
+        VARCHAR name
+        VARCHAR phone
+        VARCHAR email
+        VARCHAR language
+        VARCHAR timezone
+        VARCHAR dnd_status
+        VARCHAR account_type
+        VARCHAR risk_profile
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    notifications {
+        UUID id PK
+        VARCHAR event_type
+        VARCHAR event_id
+        UUID user_id FK
+        VARCHAR channel
+        INTEGER priority
+        VARCHAR status
+        VARCHAR template_id
+        INTEGER template_version
+        JSONB personalisation_data
+        JSONB rendered_content
+        VARCHAR provider
+        VARCHAR external_id
+        INTEGER delivery_attempts
+        INTEGER max_retries
+        TIMESTAMPTZ next_retry_at
+        TIMESTAMPTZ delivered_at
+        TIMESTAMPTZ read_at
+        TEXT failed_reason
+        INTEGER cost_paisa
+        JSONB metadata
+        UUID correlation_id
+        VARCHAR idempotency_key
+        BOOLEAN dnd_checked
+        TIMESTAMPTZ dnd_check_timestamp
+        VARCHAR dnd_result
+        VARCHAR classification
+        BOOLEAN regulatory_override
+        BOOLEAN frequency_cap_checked
+        VARCHAR frequency_cap_result
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    notification_state_log {
+        BIGINT id PK
+        UUID notification_id FK
+        VARCHAR from_status
+        VARCHAR to_status
+        VARCHAR actor
+        JSONB metadata
+        TIMESTAMPTZ created_at
+    }
+
+    dead_letter_queue {
+        UUID id PK
+        UUID notification_id FK
+        JSONB original_event
+        TEXT failure_reason
+        INTEGER retry_count
+        TEXT last_error
+        BOOLEAN resolved
+        VARCHAR resolved_by
+        TIMESTAMPTZ resolved_at
+        VARCHAR resolution_action
+        TIMESTAMPTZ created_at
+    }
+
+    user_preferences {
+        UUID user_id FK
+        VARCHAR event_category
+        VARCHAR event_type
+        VARCHAR channel
+        BOOLEAN enabled
+        BOOLEAN quiet_hours_override
+        VARCHAR digest_mode
+        INTEGER priority_override
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    consent_records {
+        UUID id PK
+        UUID user_id FK
+        VARCHAR channel
+        VARCHAR consent_type
+        BOOLEAN granted
+        VARCHAR ip_address
+        TEXT consent_text
+        TIMESTAMPTZ created_at
+    }
+
+    delivery_attempts {
+        UUID id PK
+        UUID notification_id FK
+        VARCHAR channel
+        VARCHAR provider
+        INTEGER attempt_number
+        VARCHAR status
+        INTEGER response_code
+        TEXT response_body
+        INTEGER latency_ms
+        TIMESTAMPTZ attempted_at
+    }
+
+    provider_health {
+        UUID id PK
+        VARCHAR provider
+        VARCHAR channel
+        VARCHAR circuit_state
+        INTEGER failure_count
+        INTEGER success_count
+        TIMESTAMPTZ last_checked
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    templates {
+        UUID id PK
+        VARCHAR template_id
+        VARCHAR event_type
+        INTEGER version
+        JSONB channels
+        JSONB localisation
+        BOOLEAN is_active
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    users ||--o{ notifications : "receives"
+    users ||--o{ user_preferences : "configures"
+    users ||--o{ consent_records : "grants"
+    notifications ||--o{ notification_state_log : "transitions"
+    notifications ||--o{ delivery_attempts : "records"
+    notifications ||--o| dead_letter_queue : "may_enter"
+```

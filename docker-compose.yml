@@ -1,11 +1,42 @@
 # docker-compose.yml
-version: '3.9'
 
 services:
+  # ── PostgreSQL TLS certificates (one-shot) ──────────────────────────
+  # Generates a self-signed server certificate into a shared volume the first
+  # time only. Never baked into an image, never committed (spec A10.3). In
+  # production replace with certificates from your CA / secrets manager.
+  postgres-certs:
+    image: alpine/openssl:latest
+    container_name: notification_postgres_certs
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        set -e
+        if [ ! -s /certs/server.key ]; then
+          openssl req -new -x509 -days 825 -nodes -text \
+            -subj "/CN=notification-postgres" \
+            -out /certs/server.crt -keyout /certs/server.key
+        fi
+        # postgres (uid 70 in the alpine image) requires 0600 on the key
+        chown 70:70 /certs/server.key /certs/server.crt
+        chmod 600 /certs/server.key
+    volumes:
+      - postgres_certs:/certs
+    restart: 'no'
+
   # ── PostgreSQL ──────────────────────────────────────────────────────
   postgres:
     image: postgres:15-alpine
     container_name: notification_postgres
+    # TLS on for client connections (spec A10.3). Clients use sslmode=require.
+    command: >
+      postgres
+      -c ssl=on
+      -c ssl_cert_file=/certs/server.crt
+      -c ssl_key_file=/certs/server.key
+    depends_on:
+      postgres-certs:
+        condition: service_completed_successfully
     environment:
       POSTGRES_DB: notification_engine
       POSTGRES_USER: notification_user
@@ -14,6 +45,7 @@ services:
       - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - postgres_certs:/certs:ro
     healthcheck:
       test:
         ['CMD-SHELL', 'pg_isready -U notification_user -d notification_engine']
@@ -39,6 +71,10 @@ services:
       --maxmemory-policy allkeys-lru
       --save 60 1000
       --loglevel warning
+      --rename-command FLUSHALL ""
+      --rename-command FLUSHDB ""
+      --rename-command KEYS ""
+      --rename-command DEBUG ""
     ports:
       - '6379:6379'
     volumes:
@@ -152,6 +188,24 @@ services:
           memory: 256M
     restart: unless-stopped
 
+  # ── Database migrations (one-shot) ──────────────────────────────────
+  # Runs `prisma migrate deploy` from the build stage (the production image
+  # deliberately has no Prisma CLI). The app only starts once it has succeeded,
+  # so a new release can never run against an old schema.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: notification_migrate
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-notification_user}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-notification_engine}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
   # ── Application ─────────────────────────────────────────────────────
   app:
     build:
@@ -160,6 +214,8 @@ services:
       target: production
     container_name: notification_app
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -172,8 +228,18 @@ services:
       - '3000:3000'
     env_file:
       - .env
+    # `environment` wins over `env_file`: inside the compose network the
+    # services are reached by NAME, not by the localhost ports .env uses for
+    # running the app on the host.
     environment:
       NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DATABASE_URL: postgresql://${DB_USER:-notification_user}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-notification_engine}?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      KAFKA_BROKERS: kafka:29092
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
     deploy:
       resources:
         limits:
@@ -181,7 +247,7 @@ services:
           memory: 512M
     restart: unless-stopped
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/ready || exit 1']
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/ready || exit 1']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -195,6 +261,7 @@ services:
       - '9090:9090'
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -222,6 +289,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres_certs:
   postgres_data:
   redis_data:
   zookeeper_data:

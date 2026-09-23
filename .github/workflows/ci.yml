@@ -28,8 +28,8 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Lint
-        run: npm run lint
+      - name: Lint (errors fail the build; `npm run lint` auto-fixes locally)
+        run: npm run lint:check
 
       - name: Build
         run: npm run build
@@ -55,7 +55,7 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Run tests with coverage
+      - name: Run unit tests with coverage (thresholds enforced by jest.config.ts)
         run: npm run test:cov
 
       - name: Upload coverage report
@@ -94,3 +94,84 @@ jobs:
           base: HEAD~1
           head: HEAD
         continue-on-error: true
+
+  alert-rules:
+    name: Validate Prometheus alert rules
+    runs-on: ubuntu-latest
+    needs: lint-and-build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: promtool check rules
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/monitoring:/m" prom/prometheus:v2.49.0 \
+            check rules /m/alert-rules.yml
+
+  integration-e2e:
+    name: Integration and E2E (real Postgres, Redis, Kafka, RabbitMQ)
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      NODE_ENV: test
+      REQUIRE_INFRA: 'true' # infra missing = hard failure, never a silent skip
+      DATABASE_URL: postgresql://notification_user:test_password@localhost:5433/notification_engine_test?schema=public
+      DB_HOST: localhost
+      DB_PORT: '5433'
+      DB_NAME: notification_engine_test
+      DB_USER: notification_user
+      DB_PASSWORD: test_password
+      REDIS_HOST: localhost
+      REDIS_PORT: '6380'
+      REDIS_PASSWORD: test_password
+      KAFKA_BROKERS: localhost:9093
+      KAFKA_CLIENT_ID: notification-engine-ci
+      KAFKA_GROUP_ID_STANDARD: notification-standard-cg
+      KAFKA_GROUP_ID_CRITICAL: notification-critical-cg
+      RABBITMQ_URL: amqp://notification_user:test_password@localhost:5673
+      SMTP_HOST: localhost
+      SMTP_FROM: noreply@example.test
+      WEBHOOK_SIGNATURE_SECRET: ci-webhook-secret
+      JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
+      JWT_REFRESH_SECRET: ci-refresh-secret-0123456789abcdef012345678
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate throwaway PII keys
+        run: |
+          echo "PII_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "PII_HASH_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Start infrastructure
+        run: docker compose -f docker-compose.test.yml up -d --wait
+
+      - name: Generate Prisma client and apply migrations
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy
+
+      - name: API docs are up to date (generated from the controllers)
+        run: npm run docs:openapi -- --check
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.test.yml logs --no-color | tail -300
+

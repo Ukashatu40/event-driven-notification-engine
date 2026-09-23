@@ -141,3 +141,35 @@ describe('isValidTransition', () => {
     });
   });
 });
+
+describe('isValidTransition — dispatch-time DND and deferred release', () => {
+  it('QUEUED → DND is valid (DND is enforced at dispatch, ADR-004)', () => {
+    expect(
+      isValidTransition(NotificationStatus.QUEUED, NotificationStatus.DND),
+    ).toBe(true);
+  });
+
+  it('QUIET → ROUTED is valid (release when the quiet window opens)', () => {
+    expect(
+      isValidTransition(NotificationStatus.QUIET, NotificationStatus.ROUTED),
+    ).toBe(true);
+  });
+
+  it('ROUTED → FAILED is valid (render/queue failure)', () => {
+    expect(
+      isValidTransition(NotificationStatus.ROUTED, NotificationStatus.FAILED),
+    ).toBe(true);
+  });
+
+  it('QUEUED → QUEUED is invalid (the bug that stopped every publish)', () => {
+    expect(
+      isValidTransition(NotificationStatus.QUEUED, NotificationStatus.QUEUED),
+    ).toBe(false);
+  });
+
+  it('DND is terminal', () => {
+    expect(
+      isValidTransition(NotificationStatus.DND, NotificationStatus.SENT),
+    ).toBe(false);
+  });
+});

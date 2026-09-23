@@ -2,6 +2,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   formatCurrency,
+  type CurrencyCode,
   formatNumber,
   type SupportedLocale,
 } from '../../shared/utils/currency.util';
@@ -13,6 +14,8 @@ export interface PersonalisationContext {
   timezone: string;
   payload: Record<string, unknown>;
   appName?: string;
+  /** ISO currency for monetary fields; defaults to INR (the India market). */
+  currency?: CurrencyCode;
 }
 
 /**
@@ -33,6 +36,7 @@ export class PersonalisationService {
       `Building personalisation context for user ${ctx.userId} with payload ${JSON.stringify(ctx.payload)}`,
     );
     const locale = ctx.language;
+    const currency = ctx.currency ?? 'INR';
     const payload = ctx.payload;
 
     const base: Record<string, unknown> = {
@@ -43,10 +47,10 @@ export class PersonalisationService {
     };
 
     // Format all monetary fields in the payload
-    const formatted = this.formatMonetaryFields(payload, locale);
+    const formatted = this.formatMonetaryFields(payload, locale, currency);
 
     // Compute derived fields
-    const derived = this.computeDerivedFields(payload, locale);
+    const derived = this.computeDerivedFields(payload, locale, currency);
 
     return { ...base, ...formatted, ...derived };
   }
@@ -54,6 +58,7 @@ export class PersonalisationService {
   private formatMonetaryFields(
     payload: Record<string, unknown>,
     locale: SupportedLocale,
+    currency: CurrencyCode,
   ): Record<string, unknown> {
     const MONETARY_FIELDS = [
       'amount',
@@ -77,7 +82,7 @@ export class PersonalisationService {
         // Keep raw value for calculations
         result[`${field}_raw`] = raw;
         // Add formatted version for template rendering
-        result[field] = formatCurrency(raw, locale);
+        result[field] = formatCurrency(raw, locale, currency);
       }
     }
 
@@ -87,6 +92,7 @@ export class PersonalisationService {
   private computeDerivedFields(
     payload: Record<string, unknown>,
     locale: SupportedLocale,
+    currency: CurrencyCode,
   ): Record<string, unknown> {
     const derived: Record<string, unknown> = {};
 
@@ -101,7 +107,7 @@ export class PersonalisationService {
       typeof qty === 'number'
     ) {
       const pnl = (currentPrice - buyPrice) * qty;
-      derived['pnl'] = formatCurrency(pnl < 0 ? -pnl : pnl, locale);
+      derived['pnl'] = formatCurrency(pnl < 0 ? -pnl : pnl, locale, currency);
       derived['pnl_raw'] = pnl;
       derived['pnl_percent'] = (
         ((currentPrice - buyPrice) / buyPrice) *

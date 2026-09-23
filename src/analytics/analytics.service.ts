@@ -3,6 +3,22 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../infrastructure/database/prisma.service';
 import { RealtimeCountersService } from './realtime-counters.service';
 
+/**
+ * States a notification only reaches once a provider was actually called.
+ * Suppressed notifications (CAPPED, QUIET, DND, DEDUPLICATED) and ones that
+ * never left the pipeline (CREATED…QUEUED) are NOT "sent" — counting them
+ * would make every delivery rate look worse than it is.
+ */
+const ATTEMPTED_STATES = [
+  'SENT',
+  'DELIVERED',
+  'READ',
+  'BOUNCED',
+  'FAILED',
+  'RETRYING',
+  'DLQ',
+] as const;
+
 interface DeliveryRateResult {
   period: { start: string; end: string };
   summary: {
@@ -23,7 +39,11 @@ interface DeliveryRateResult {
     promotionalBlocked: number;
     transactionalBlocked: number;
   };
-  costSummary: { totalPaisa: number; perNotificationAvgPaisa: number };
+  costSummary: {
+    totalPaisa: number;
+    totalInr: number;
+    perNotificationAvgPaisa: number;
+  };
 }
 
 interface ChannelPerformanceResult {
@@ -94,12 +114,20 @@ export class AnalyticsService {
       },
       costSummary: {
         totalPaisa: costs.total,
+        totalInr: costs.total / 100,
         perNotificationAvgPaisa:
           totalStats.sent > 0 ? costs.total / totalStats.sent : 0,
       },
     };
   }
 
+  /**
+   * Per-provider performance, computed from real data:
+   *  - sent / failed / latency / cost come from delivery_attempts;
+   *  - delivered comes from notifications that reached DELIVERED or READ via
+   *    that provider (i.e. confirmed by a delivery receipt);
+   *  - circuit trips is the provider's current failure count from provider_health.
+   */
   async getChannelPerformance(
     periodDays: number = 7,
   ): Promise<ChannelPerformanceResult[]> {
@@ -107,26 +135,59 @@ export class AnalyticsService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - periodDays);
 
-    const results = await this.prisma.deliveryAttempt.groupBy({
-      by: ['provider'],
-      where: {
-        attemptedAt: { gte: startDate, lte: endDate },
-      },
-      _count: { id: true },
-      _avg: { latencyMs: true, costPaisa: true },
-    });
+    const [attempts, failedAttempts, deliveredByProvider, health] =
+      await Promise.all([
+        this.prisma.deliveryAttempt.groupBy({
+          by: ['provider'],
+          where: { attemptedAt: { gte: startDate, lte: endDate } },
+          _count: { id: true },
+          _avg: { latencyMs: true, costPaisa: true },
+        }),
+        this.prisma.deliveryAttempt.groupBy({
+          by: ['provider'],
+          where: {
+            attemptedAt: { gte: startDate, lte: endDate },
+            status: 'failed',
+          },
+          _count: { id: true },
+        }),
+        this.prisma.notification.groupBy({
+          by: ['provider'],
+          where: {
+            createdAt: { gte: startDate, lte: endDate },
+            status: { in: ['DELIVERED', 'READ'] },
+            provider: { not: null },
+          },
+          _count: { id: true },
+        }),
+        this.prisma.providerHealth.findMany({
+          select: { provider: true, failureCount: true },
+        }),
+      ]);
 
-    return results.map((r: any) => ({
-      channel: this.getChannelForProvider(r.provider),
-      provider: r.provider,
-      sent: r._count.id,
-      delivered: Math.floor(r._count.id * 0.96), // approximation until webhook tracking
-      failed: Math.floor(r._count.id * 0.04),
-      deliveryRate: 0.96,
-      avgLatencyMs: Math.round(r._avg.latencyMs ?? 0),
-      costPaisa: Math.round(r._avg.costPaisa ?? 0),
-      circuitBreakerTrips: 0,
-    }));
+    const failedBy = new Map(
+      failedAttempts.map((r) => [r.provider, r._count.id]),
+    );
+    const deliveredBy = new Map(
+      deliveredByProvider.map((r) => [r.provider ?? '', r._count.id]),
+    );
+    const tripsBy = new Map(health.map((h) => [h.provider, h.failureCount]));
+
+    return attempts.map((r) => {
+      const sent = r._count.id;
+      const delivered = deliveredBy.get(r.provider) ?? 0;
+      return {
+        channel: this.getChannelForProvider(r.provider),
+        provider: r.provider,
+        sent,
+        delivered,
+        failed: failedBy.get(r.provider) ?? 0,
+        deliveryRate: sent > 0 ? delivered / sent : 0,
+        avgLatencyMs: Math.round(r._avg.latencyMs ?? 0),
+        costPaisa: Math.round(r._avg.costPaisa ?? 0),
+        circuitBreakerTrips: tripsBy.get(r.provider) ?? 0,
+      };
+    });
   }
 
   async getOptOutTrends(
@@ -199,7 +260,7 @@ export class AnalyticsService {
       this.prisma.notification.count({
         where: {
           createdAt: { gte: start, lte: end },
-          status: { not: 'CREATED' },
+          status: { in: [...ATTEMPTED_STATES] },
         },
       }),
       this.prisma.notification.count({
@@ -229,7 +290,11 @@ export class AnalyticsService {
     for (const channel of channels) {
       const [sent, delivered] = await Promise.all([
         this.prisma.notification.count({
-          where: { createdAt: { gte: start, lte: end }, channel },
+          where: {
+            createdAt: { gte: start, lte: end },
+            channel,
+            status: { in: [...ATTEMPTED_STATES] },
+          },
         }),
         this.prisma.notification.count({
           where: {
@@ -269,6 +334,7 @@ export class AnalyticsService {
           where: {
             createdAt: { gte: start, lte: end },
             priority,
+            status: { in: [...ATTEMPTED_STATES] },
           },
         }),
         this.prisma.notification.count({
@@ -350,6 +416,7 @@ export class AnalyticsService {
   private getChannelForProvider(provider: string): string {
     const map: Record<string, string> = {
       msg91: 'sms',
+      termii: 'sms',
       twilio: 'sms',
       nodemailer: 'email',
       fcm: 'push',

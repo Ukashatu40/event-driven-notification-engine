@@ -4,6 +4,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { HealthService, SystemHealth } from './health.service';
 import { PrometheusService } from './prometheus/prometheus.service';
+import { Public } from '../api/decorators/public.decorator';
 
 @ApiTags('health')
 @Controller()
@@ -13,6 +14,7 @@ export class HealthController {
     private readonly prometheusService: PrometheusService,
   ) {}
 
+  @Public()
   @Get('health')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -35,6 +37,7 @@ export class HealthController {
     void reply.status(statusCode).send(result);
   }
 
+  @Public()
   @Get('ready')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -52,6 +55,7 @@ export class HealthController {
       .send({ ready: isReady, timestamp: new Date().toISOString() });
   }
 
+  @Public()
   @Get('live')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -67,6 +71,7 @@ export class HealthController {
     };
   }
 
+  @Public()
   @Get('metrics')
   @ApiOperation({
     summary: 'Prometheus metrics',

@@ -20,6 +20,9 @@ export class PrometheusService implements OnModuleInit {
   readonly notificationDndBlocksTotal: Counter;
   readonly notificationRetryTotal: Counter;
   readonly dndViolationsDetected: Counter;
+  readonly consentBlocksTotal: Counter;
+  readonly digestsSentTotal: Counter;
+  readonly digestItemsTotal: Counter;
 
   // ── Histograms ────────────────────────────────────────────────────
 
@@ -71,7 +74,28 @@ export class PrometheusService implements OnModuleInit {
     this.notificationRetryTotal = new Counter({
       name: 'notification_retry_total',
       help: 'Total notification retry attempts',
-      labelNames: ['attempt_number', 'provider', 'priority'],
+      labelNames: ['attempt', 'provider'],
+      registers: [this.registry],
+    });
+
+    this.digestsSentTotal = new Counter({
+      name: 'notification_digests_sent_total',
+      help: 'Digest notifications created, by what triggered them',
+      labelNames: ['source'],
+      registers: [this.registry],
+    });
+
+    this.digestItemsTotal = new Counter({
+      name: 'notification_digest_items_total',
+      help: 'Individual notifications folded into digests, by source',
+      labelNames: ['source'],
+      registers: [this.registry],
+    });
+
+    this.consentBlocksTotal = new Counter({
+      name: 'notification_consent_blocks_total',
+      help: 'Sends stopped (mode=enforce) or flagged (mode=audit) for lack of valid consent',
+      labelNames: ['channel', 'classification', 'reason', 'mode'],
       registers: [this.registry],
     });
 
@@ -87,7 +111,7 @@ export class PrometheusService implements OnModuleInit {
     this.notificationDeliveryLatency = new Histogram({
       name: 'notification_delivery_latency_seconds',
       help: 'End-to-end notification delivery latency from event ingestion to delivery confirmation',
-      labelNames: ['channel', 'priority', 'provider'],
+      labelNames: ['channel', 'priority'],
       // Buckets tuned to the SLA targets in the spec:
       // CRITICAL < 10s, HIGH < 30s, MEDIUM < 5min, LOW < 2hrs
       buckets: [0.5, 1, 2, 5, 10, 30, 60, 300, 1800, 7200],
@@ -171,9 +195,18 @@ export class PrometheusService implements OnModuleInit {
     priority: string,
   ): void {
     this.notificationDeliveryTotal.inc({ channel, provider, status });
+    // spec Section A11.1: notification_delivery_latency_seconds labels: channel, priority
     this.notificationDeliveryLatency.observe(
-      { channel, priority, provider },
+      { channel, priority },
       latencyMs / 1000,
+    );
+  }
+
+  /** Called from DLR webhook handler when DELIVERED state is confirmed */
+  recordDeliveryLatency(channel: string, latencySeconds: number): void {
+    this.notificationDeliveryLatency.observe(
+      { channel, priority: 'unknown' },
+      latencySeconds,
     );
   }
 

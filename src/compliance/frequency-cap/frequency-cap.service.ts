@@ -3,7 +3,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { PrometheusService } from '../../health/prometheus/prometheus.service';
 import { REDIS_KEYS, TTL } from '../../shared/constants/redis-keys';
-import { CRITICAL_EVENTS, EventType } from '../../shared/constants/event-types';
+import {
+  CRITICAL_EVENTS,
+  EventType,
+  REGULATORY_MANDATORY_EVENTS,
+} from '../../shared/constants/event-types';
 import { Channel } from '../../shared/constants/channels';
 
 export type CapCheckResult =
@@ -65,9 +69,19 @@ export class FrequencyCapService {
       return { capped: false };
     }
 
+    // Regulator-mandated notifications (trade confirmations, deposits, SIP
+    // outcomes, KYC, contract notes) must not be swallowed as "too frequent":
+    // spec A6.2 exempts regulatory mandates from the per-channel cap, and the
+    // same-type cooldown exists to damp repeat price alerts, not to hide a
+    // second order confirmation. The category-hourly and global-daily caps
+    // still apply to them.
+    const isMandated = REGULATORY_MANDATORY_EVENTS.includes(eventType);
+
     // 1. Cooldown check (most specific — prevents rapid duplicate alerts)
-    const cooldownResult = await this.checkCooldown(userId, eventType);
-    if (cooldownResult.capped) return cooldownResult;
+    if (!isMandated) {
+      const cooldownResult = await this.checkCooldown(userId, eventType);
+      if (cooldownResult.capped) return cooldownResult;
+    }
 
     // 2. Per-category hourly cap
     const category = eventType.split('-')[0] ?? eventType;
@@ -75,8 +89,10 @@ export class FrequencyCapService {
     if (categoryResult.capped) return categoryResult;
 
     // 3. Per-channel daily cap
-    const channelResult = await this.checkChannelDaily(userId, channel);
-    if (channelResult.capped) return channelResult;
+    if (!isMandated) {
+      const channelResult = await this.checkChannelDaily(userId, channel);
+      if (channelResult.capped) return channelResult;
+    }
 
     // 4. Global daily cap
     const globalResult = await this.checkGlobalDaily(userId);
@@ -86,32 +102,45 @@ export class FrequencyCapService {
   }
 
   /**
-   * Records a sent notification against all cap counters.
-   * Call this AFTER successful delivery, not before.
+   * Records a sent notification against the cap counters.
+   *
+   * A single event fans out to several channels, but it is ONE notification to
+   * the user: the global-daily, category-hourly and cooldown counters advance
+   * once per event (`countEvent = true`, for the first channel), while every
+   * channel advances its own per-channel daily counter. Otherwise a five-channel
+   * event would use up a "3 per category per hour" allowance on its own.
    */
   async record(
     userId: string,
     eventType: EventType,
     channel: Channel,
+    countEvent = true,
   ): Promise<void> {
     const category = eventType.split('-')[0] ?? eventType;
 
-    await Promise.all([
-      this.redis.increment(REDIS_KEYS.capGlobalDaily(userId), TTL.CAP_DAILY),
+    const ops: Promise<unknown>[] = [
       this.redis.increment(
         REDIS_KEYS.capChannelDaily(userId, channel),
         TTL.CAP_DAILY,
       ),
-      this.redis.increment(
-        REDIS_KEYS.capCategoryHourly(userId, category),
-        TTL.CAP_HOURLY,
-      ),
-      this.redis.set(
-        REDIS_KEYS.capTypeCooldown(userId, eventType),
-        '1',
-        TTL.CAP_COOLDOWN,
-      ),
-    ]);
+    ];
+
+    if (countEvent) {
+      ops.push(
+        this.redis.increment(REDIS_KEYS.capGlobalDaily(userId), TTL.CAP_DAILY),
+        this.redis.increment(
+          REDIS_KEYS.capCategoryHourly(userId, category),
+          TTL.CAP_HOURLY,
+        ),
+        this.redis.set(
+          REDIS_KEYS.capTypeCooldown(userId, eventType),
+          '1',
+          TTL.CAP_COOLDOWN,
+        ),
+      );
+    }
+
+    await Promise.all(ops);
   }
 
   // ── Private cap checks ────────────────────────────────────────────

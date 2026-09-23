@@ -1,0 +1,30 @@
+# Secrets — NEVER bake credentials into an image (spec A10.3). Only the template is allowed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Not needed to build or run, and large
+.git
+.github
+.vscode
+node_modules
+dist
+coverage
+tmp
+mnt
+data
+docs
+monitoring
+tests
+*.pdf
+*.docx
+postman-collection.json
+image.png
+report.js
+script.js
+.DS_Store
+*.log
+Dockerfile
+docker-compose*.yml

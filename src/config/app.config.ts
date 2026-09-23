@@ -21,4 +21,18 @@ export const appConfig = registerAs('app', () => ({
     refreshSecret: process.env.JWT_REFRESH_SECRET ?? '',
     refreshExpiry: process.env.JWT_REFRESH_EXPIRY ?? '7d',
   },
+  // One credential per role: holding the SERVICE key must never let you mint an
+  // ADMIN token. A role whose key is unset cannot log in at all.
+  // enforce (default): block sends that lack consent. audit: allow but log +
+  // count them — for migrating existing users. off: do not check.
+  consentEnforcement: process.env.CONSENT_ENFORCEMENT ?? 'enforce',
+  serviceKey: process.env.SERVICE_API_KEY ?? '',
+  operatorKey: process.env.OPERATOR_API_KEY ?? '',
+  adminKey: process.env.ADMIN_API_KEY ?? '',
+  webhooks: {
+    msg91Secret: process.env.MSG91_WEBHOOK_SECRET ?? '',
+    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? '',
+    fcmSecret: process.env.FCM_WEBHOOK_SECRET ?? '',
+    whatsappAppSecret: process.env.WHATSAPP_APP_SECRET ?? '',
+  },
 }));

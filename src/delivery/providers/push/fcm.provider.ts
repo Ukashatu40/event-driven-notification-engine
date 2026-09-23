@@ -29,6 +29,7 @@ export class FcmProvider implements IDeliveryProvider {
       return {
         success: true,
         externalId: `mock_fcm_${Date.now()}`,
+        receipt: 'simulated' as const,
         provider: this.providerName,
         latencyMs: Date.now() - start,
       };

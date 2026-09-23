@@ -26,7 +26,7 @@ async function main(): Promise<void> {
     take: 100,
   });
 
-  const ids = users.map((u) => u.id).join(',');
+  const ids = users.map((u: { id: string }) => u.id).join(',');
 
   // Write to a file k6 can read via --env
   writeFileSync('scripts/user-ids.txt', ids);

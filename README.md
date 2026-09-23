@@ -4,6 +4,10 @@
 
 A production-grade, event-driven notification platform designed for financial services. The system processes more than 25 financial event types and delivers notifications across SMS, Email, Push, WhatsApp, and In-App channels while enforcing TRAI DND compliance, frequency capping, quiet-hour restrictions, intelligent failover, and real-time operational analytics.
 
+**Live demo:** _add your deployed URLs here once you've followed [DEPLOYMENT-CLOUD.md](DEPLOYMENT-CLOUD.md)._ It runs on free tiers
+(Render backend, Vercel frontend), so the very first request after a quiet spell can take up to a minute to wake up — a well-known
+free-tier trade-off, not a bug.
+
 ---
 
 ## Overview
@@ -419,7 +423,17 @@ The project documents key architectural decisions under `docs/adr/`.
 
 ---
 
-## Deliberate Error Log
+## Consent and Digests
+
+Consent is an append-only evidence log enforced at dispatch (WhatsApp and promotional SMS/email); notifications can be delivered
+as hourly/daily digests, and overnight or capped pile-ups fold into one. See [docs/consent-and-digests.md](docs/consent-and-digests.md).
+
+## Nigeria Market
+
+The engine also serves Nigeria (`market = 'NG'`): ₦ formatting, Nigerian Pidgin / Hausa / Yoruba / Igbo, Termii SMS,
+and Paystack / Flutterwave / OPay / Interswitch payment webhooks. See [docs/nigeria-market.md](docs/nigeria-market.md).
+
+## Document Error Log
 
 The project includes a documented review of specification inconsistencies.
 

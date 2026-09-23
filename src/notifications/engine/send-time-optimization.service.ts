@@ -1,5 +1,5 @@
 // src/notifications/engine/send-time-optimization.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { REDIS_KEYS } from '../../shared/constants/redis-keys';
 import { CRITICAL_EVENTS, EventType } from '../../shared/constants/event-types';
@@ -31,8 +31,6 @@ export interface SendTimeDecision {
  */
 @Injectable()
 export class SendTimeOptimizationService {
-  private readonly logger = new Logger(SendTimeOptimizationService.name);
-
   private readonly MIN_SAMPLES = 10;
   private readonly MAX_DELAY_HOURS = 4;
   private readonly DECAY_FACTOR = 0.9; // older reads count for less each time
@@ -47,7 +45,6 @@ export class SendTimeOptimizationService {
     userId: string,
     readAt: Date = new Date(),
   ): Promise<void> {
-    this.logger.debug('Debugging');
     const hour = readAt.getHours();
     const key = REDIS_KEYS.sendTimeScores(userId);
 
