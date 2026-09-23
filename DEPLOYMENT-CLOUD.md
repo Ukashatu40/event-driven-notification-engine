@@ -31,38 +31,40 @@ this plainly in your README rather than let someone discover it — it reads as 
 
 ### Kafka — [Aiven](https://aiven.io) (Apache Kafka, free plan)
 Upstash discontinued Upstash Kafka in March 2025 — it's no longer in their console (that's the "no Cluster/Topics" you're seeing).
-Aiven's free Kafka plan is the replacement: no card required, standard Kafka protocol over SASL/TLS (this app talks to it with
-`kafkajs`, not a proprietary HTTP API, so it's a genuine drop-in), capped at 5 topics / 2 partitions each — this app only ever
-creates and uses 3, comfortably inside that cap.
+Aiven's free Kafka plan is the replacement: no card required, standard Kafka protocol (this app talks to it with `kafkajs`, not a
+proprietary HTTP API, so it's a genuine drop-in), capped at 5 topics / 2 partitions each — this app only ever creates and uses 3,
+comfortably inside that cap.
+
+**Aiven's free-plan Kafka service uses mutual TLS (a client certificate), not SASL** — confirmed empirically: a plain-SSL listener
+never expects a SASL handshake at all, and sending one anyway fails with `Request is not valid given the current SASL state`
+(`ILLEGAL_SASL_STATE`) even with perfectly correct username/password. So the client certificate below isn't a fallback for when
+SASL doesn't work — for this plan, it's the actual mechanism. `KAFKA_SASL_USERNAME`/`KAFKA_SASL_PASSWORD` still exist in this
+app's config for a provider whose service genuinely is SASL_SSL (a paid Aiven plan, Confluent Cloud, etc.); the app skips SASL
+entirely the moment a client cert is configured, so setting both is never a conflict — just pointless for this plan.
+
 1. Sign up at aiven.io (no card). Create a service → **Apache Kafka** → **Free** plan → any region.
 2. `src/config/kafka.config.ts` defines 7 topic names, but `allowAutoTopicCreation: false` means only the ones actually
    subscribed-to or published-to need to exist — that's just 3: **Topics** tab → create `notification-events`,
    `notification-critical`, `notification-dlq`. (The other 4 names — routing/delivery/status/analytics — are reserved for future
    use and nothing reads or writes them today; skip them.)
 3. Service page → **Overview** → copy the **Host** and **Port** (this is your bootstrap broker, `host:port`).
-4. **Users** tab (or the default `avnadmin` user) → copy the **Username** and **Password** — Aiven Kafka auth is SASL/PLAIN over
-   TLS by default, which matches this app's `KAFKA_SASL_USERNAME`/`KAFKA_SASL_PASSWORD` config exactly.
-5. Service page → **Overview** → **CA Certificate** → download as `ca.pem`. Aiven's broker cert is signed by Aiven's own CA, not
-   a public one — without this, the app connects with `KAFKA_SSL=true` alone and fails with `self-signed certificate in
-   certificate chain`. Set `KAFKA_SSL_CA` to its **base64**, not the raw file — genuinely one line, so a web form's text input
-   has nothing to mangle on paste: `base64 -i ca.pem | tr -d '\n'` on macOS (`base64 -w0 ca.pem` on Linux). Raw multi-line PEM
-   also works — the app detects either form — but base64 is the one that can't go wrong in transit.
-6. `KAFKA_BROKERS` = `host:port`, `KAFKA_SSL` = `true`, `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD` = from step 4,
-   `KAFKA_SSL_CA` = the base64 string from step 5.
-7. **Some Aiven Kafka services require mutual TLS even when you intend to use SASL** — the broker demands a client certificate at
-   the raw TLS layer, before Kafka's own protocol (SASL included) ever starts, which fails with `tlsv13 alert certificate
-   required` regardless of how correct your SASL username/password are. Diagnose this independently of Render/the app first:
+4. Same **Overview** page → download all three: **CA Certificate** (`ca.pem`), **Access Certificate** (`service.cert`), **Access
+   Key** (`service.key`). Base64 each — genuinely one line, so a web form's text input has nothing to mangle on paste (raw
+   multi-line PEM also works, the app detects either form, but base64 is the one that can't go wrong in transit):
    ```bash
-   openssl s_client -connect <host>:<port> -CAfile ca.pem -brief
+   base64 -i ca.pem | tr -d '\n'         # macOS; use base64 -w0 <file> on Linux
+   base64 -i service.cert | tr -d '\n'
+   base64 -i service.key | tr -d '\n'
    ```
-   `Verification: OK` followed immediately by an `alert certificate required` / `SSL alert number 116` error means this is what's
-   happening. Fix: same **Overview** page as the CA → **Access Certificate** and **Access Key** → download both → set
-   `KAFKA_SSL_CLIENT_CERT` and `KAFKA_SSL_CLIENT_KEY` (base64 each, same command as step 5). Confirm it actually works before
-   touching Render:
+5. **Verify before touching Render at all** — this is the actual live connection, independent of Render or the app:
    ```bash
-   openssl s_client -connect <host>:<port> -CAfile ca.pem -cert access.crt -key access.key -brief
+   openssl s_client -connect <host>:<port> -CAfile ca.pem -cert service.cert -key service.key -brief
    ```
-   No alert this time means it's fixed — paste both base64 values into Render and redeploy.
+   `Verification: OK` with the connection staying open (exit with Ctrl+C — that's `s_client` waiting for interactive input, not a
+   hang) means it works. If you get `Verification: OK` followed immediately by `alert certificate required` (SSL alert 116),
+   you're missing `-cert`/`-key` — that alert means the broker demands the client certificate specifically.
+6. `KAFKA_BROKERS` = `host:port`, `KAFKA_SSL` = `true`, `KAFKA_SSL_CA` / `KAFKA_SSL_CLIENT_CERT` / `KAFKA_SSL_CLIENT_KEY` = the
+   three base64 strings from step 4. Leave `KAFKA_SASL_USERNAME`/`KAFKA_SASL_PASSWORD` unset for this plan.
 
 One free-tier quirk worth knowing: Aiven auto-pauses an idle free Kafka service ("idle shutdown") and also pauses a brand-new one
 that sees no traffic in its first few hours ("first-use shutdown") — send a real event through the app soon after setup so it

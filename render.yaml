@@ -108,26 +108,30 @@ services:
         sync: false
       - key: KAFKA_BROKERS
         sync: false
-      - key: KAFKA_SASL_USERNAME
-        sync: false
-      - key: KAFKA_SASL_PASSWORD
-        sync: false
-      # Aiven's Kafka broker cert is signed by Aiven's own CA, not a public
-      # one — ssl:true alone fails with "self-signed certificate in
-      # certificate chain". Aiven console → Service → Overview → "CA
-      # Certificate" → download as ca.pem, then paste its BASE64 here (one
-      # line, nothing for a form field to mangle): on macOS,
-      # `base64 -i ca.pem | tr -d '\n'`; on Linux, `base64 -w0 ca.pem`.
+      # Aiven's free Kafka plan uses mutual TLS, not SASL — confirmed
+      # empirically: a plain-SSL listener never expects a SASL handshake,
+      # and sending one anyway fails with "Request is not valid given the
+      # current SASL state" even with correct credentials. All three CA/
+      # cert/key values below come from the same Aiven Service → Overview
+      # page; base64 each (`base64 -i <file> | tr -d '\n'` on macOS,
+      # `base64 -w0 <file>` on Linux — genuinely one line, nothing for a
+      # form field to mangle). Verify before deploying — the real
+      # connection, independent of Render or the app entirely:
+      #   openssl s_client -connect <host>:<port> -CAfile ca.pem \
+      #     -cert service.cert -key service.key -brief
       - key: KAFKA_SSL_CA
         sync: false
-      # Only needed if `openssl s_client -CAfile ca.pem ...` against your
-      # broker shows "Verification: OK" followed by a "certificate required"
-      # alert — some Aiven Kafka services require mutual TLS regardless of
-      # SASL. Same Overview page as the CA: "Access Certificate" / "Access
-      # Key", each base64'd the same way. Leave both blank otherwise.
       - key: KAFKA_SSL_CLIENT_CERT
-        value: ''
+        sync: false
       - key: KAFKA_SSL_CLIENT_KEY
+        sync: false
+      # Only for a provider whose service genuinely is SASL_SSL (a paid
+      # Aiven plan, Confluent Cloud, etc.) — the app skips SASL entirely
+      # once a client cert is configured above, so these are never a
+      # conflict, just unused for Aiven's free plan. Leave blank.
+      - key: KAFKA_SASL_USERNAME
+        value: ''
+      - key: KAFKA_SASL_PASSWORD
         value: ''
       - key: RABBITMQ_URL
         sync: false

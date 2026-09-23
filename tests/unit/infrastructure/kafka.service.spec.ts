@@ -115,6 +115,35 @@ describe('KafkaService SSL construction', () => {
     });
     expect(kafkaCtor.mock.calls[0][0].ssl).toBe(true);
   });
+
+  it('drops SASL once a client cert is configured — a plain-SSL listener never expects a SaslHandshake', () => {
+    // Confirmed live against a real broker: sending both produces
+    // "Request is not valid given the current SASL state" (ILLEGAL_SASL_STATE)
+    // — a protocol violation, not a credentials problem.
+    build({
+      'kafka.ssl': true,
+      'kafka.sslClientCert':
+        '-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----',
+      'kafka.sslClientKey':
+        '-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----',
+      'kafka.sasl': { mechanism: 'plain', username: 'u', password: 'p' },
+    });
+    expect(kafkaCtor.mock.calls[0][0].sasl).toBeUndefined();
+  });
+
+  it('still sends SASL when there is no client cert — unrelated services keep working', () => {
+    build({
+      'kafka.ssl': true,
+      'kafka.sslCa':
+        '-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----',
+      'kafka.sasl': { mechanism: 'plain', username: 'u', password: 'p' },
+    });
+    expect(kafkaCtor.mock.calls[0][0].sasl).toEqual({
+      mechanism: 'plain',
+      username: 'u',
+      password: 'p',
+    });
+  });
 });
 
 describe('normalizePemMaterial', () => {

@@ -69,10 +69,12 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
     };
 
     const ssl = this.configService.get<boolean>('kafka.ssl');
+    let usingClientCertAuth = false;
     if (ssl) {
       const sslCa = this.configService.get<string>('kafka.sslCa');
       const clientCert = this.configService.get<string>('kafka.sslClientCert');
       const clientKey = this.configService.get<string>('kafka.sslClientKey');
+      usingClientCertAuth = Boolean(clientCert && clientKey);
       // A provider-issued CA (Aiven, etc.) beats plain `ssl: true`, which
       // only trusts Node's public root store and rejects a broker cert
       // signed by the provider's own CA. See normalizePemMaterial() for why
@@ -82,9 +84,8 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       // at the raw TLS layer — the broker sends a "certificate required"
       // alert before Kafka's own protocol (SASL included) ever starts, so
       // no amount of correct SASL config fixes it. Providing cert+key here
-      // satisfies that independently of whether SASL is also configured
-      // below; a broker that only wants SASL simply never asks for one.
-      if (sslCa || (clientCert && clientKey)) {
+      // satisfies that.
+      if (sslCa || usingClientCertAuth) {
         kafkaConfig.ssl = { rejectUnauthorized: true };
         if (sslCa) kafkaConfig.ssl.ca = [normalizePemMaterial(sslCa)];
         if (clientCert && clientKey) {
@@ -96,8 +97,17 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // A listener whose security protocol is plain SSL (mutual TLS — exactly
+    // what a configured client cert satisfies) never expects a
+    // SaslHandshake request; the broker's per-connection state machine has
+    // no state for it. Sending one anyway is a protocol violation, not a
+    // credentials problem — confirmed live: "Request is not valid given the
+    // current SASL state" (ILLEGAL_SASL_STATE), immediately after a clean
+    // TLS handshake with the client cert. The client cert alone IS the
+    // identity on that kind of listener, so SASL is skipped entirely once
+    // one is configured, rather than sent alongside it.
     const sasl = this.configService.get('kafka.sasl');
-    if (sasl) {
+    if (sasl && !usingClientCertAuth) {
       kafkaConfig.sasl = sasl;
     }
 
