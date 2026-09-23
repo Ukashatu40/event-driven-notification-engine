@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { RedisService } from '../infrastructure/redis/redis.service';
 import { REDIS_KEYS } from '../shared/constants/redis-keys';
 
-export type Role = 'ADMIN' | 'OPERATOR' | 'SERVICE';
+export type Role = 'ADMIN' | 'OPERATOR' | 'SERVICE' | 'USER';
 
 export interface TokenPair {
   access_token: string;
@@ -44,7 +44,7 @@ export class AuthService {
    * key presented is the key configured for that role — otherwise anyone
    * holding the service key could simply ask for `ADMIN`.
    */
-  async login(key: string, role: Role): Promise<TokenPair> {
+  async login(key: string, role: Exclude<Role, 'USER'>): Promise<TokenPair> {
     const configKey = {
       SERVICE: 'app.serviceKey',
       OPERATOR: 'app.operatorKey',
@@ -108,6 +108,15 @@ export class AuthService {
     }
 
     return this.issue(claims.sub, claims.role, claims.fam);
+  }
+
+  /**
+   * Issues a fresh token pair for an end user who has just verified an OTP
+   * (see OtpService). A new random family, exactly like a fresh login — there
+   * is no static credential for the USER role, so this is its only entry point.
+   */
+  async issueForUser(userId: string): Promise<TokenPair> {
+    return this.issue(userId, 'USER', uuidv4());
   }
 
   private async issue(

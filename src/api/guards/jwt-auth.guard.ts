@@ -13,7 +13,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 export interface JwtPayload {
   typ?: string;
   sub: string;
-  role: 'ADMIN' | 'OPERATOR' | 'SERVICE';
+  role: 'ADMIN' | 'OPERATOR' | 'SERVICE' | 'USER';
   iat: number;
   exp: number;
 }

@@ -92,9 +92,27 @@ suite('database schema (integration)', () => {
       expect(Number(r.n)).toBe(0);
     });
 
-    it('every user has both blind indexes', async () => {
+    it('every ACTIVE user has at least one blind index', async () => {
+      // GDPR erasure (NotificationsService.eraseUserData) deliberately clears both
+      // hashes on an erased user — that's what makes the old phone/email
+      // unlookupable and frees the number for re-registration — and sets
+      // isActive: false in the same write, so that state is excluded here.
+      //
+      // Self-service sign-up (SignupService) legitimately creates a user with
+      // only ONE of the two: someone who signs up with email and never gives
+      // a phone has phoneHash = null on purpose, not a bug — so the
+      // invariant is "not BOTH null", not "both present" (that was true only
+      // by coincidence, when every user came from the bulk seed script, which
+      // always fabricates both).
       const [r] = await q<{ n: string }>(
-        `select count(*) n from users where "phoneHash" is null or "emailHash" is null`,
+        `select count(*) n from users where "isActive" = true and "phoneHash" is null and "emailHash" is null`,
+      );
+      expect(Number(r.n)).toBe(0);
+    });
+
+    it('an erased user has NO blind indexes left (unlookupable, spec A10.2)', async () => {
+      const [r] = await q<{ n: string }>(
+        `select count(*) n from users where "isActive" = false and ("phoneHash" is not null or "emailHash" is not null)`,
       );
       expect(Number(r.n)).toBe(0);
     });

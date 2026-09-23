@@ -37,6 +37,8 @@ import { EventsModule } from './events/events.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AuthModule } from './auth/auth.module';
 import { WebhooksModule } from './delivery/webhooks/webhooks.module';
+import { UsersModule } from './users/users.module';
+import { MeModule } from './me/me.module';
 
 @Module({
   imports: [
@@ -95,6 +97,8 @@ import { WebhooksModule } from './delivery/webhooks/webhooks.module';
     HealthModule,
     ComplianceModule,
     PreferencesModule,
+    UsersModule,
+    MeModule,
     TemplatesModule,
     DeliveryModule,
     NotificationsModule,

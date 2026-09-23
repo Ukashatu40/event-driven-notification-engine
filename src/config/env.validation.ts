@@ -24,6 +24,11 @@ export const envValidationSchema = Joi.object({
     }),
   JWT_REFRESH_EXPIRY: Joi.string().default('7d'),
 
+  // End-user OTP login (ADR-008)
+  OTP_CODE_TTL_SECONDS: Joi.number().integer().min(60).default(300),
+  OTP_MAX_ATTEMPTS: Joi.number().integer().min(1).default(5),
+  OTP_RESEND_COOLDOWN_SECONDS: Joi.number().integer().min(10).default(60),
+
   // API credentials, one per role (empty = that role cannot log in)
   SERVICE_API_KEY: Joi.string().optional().allow(''),
   OPERATOR_API_KEY: Joi.string().optional().allow(''),
@@ -69,6 +74,7 @@ export const envValidationSchema = Joi.object({
   REDIS_PORT: Joi.number().default(6379),
   REDIS_PASSWORD: Joi.string().required(),
   REDIS_DB: Joi.number().default(0),
+  REDIS_TLS: Joi.string().valid('true', 'false').default('false'),
 
   // Kafka
   KAFKA_BROKERS: Joi.string().required(),
