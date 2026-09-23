@@ -414,18 +414,165 @@
         ]
       }
     },
-    "/api/v1/templates/{eventType}/ab-performance": {
+    "/api/v1/users": {
       "get": {
-        "operationId": "AbTestingController_getPerformance",
-        "summary": "Get A/B variant performance for an event type",
-        "description": "Returns exposure count, delivery rate, and read rate per template variant. Used to decide whether to promote a variant to control.",
+        "operationId": "UsersController_list",
+        "summary": "Search or list users",
+        "description": "Matches `search` against the user name (case-insensitive, partial) or an exact user ID. Returns no contact details — only what is needed to pick a user (id, name, market, language, account type).",
         "parameters": [
           {
-            "name": "eventType",
-            "required": true,
-            "in": "path",
+            "name": "page",
+            "required": false,
+            "in": "query",
             "schema": {
-              "example": "SIPX-001",
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Matches a name (case-insensitive, partial) or an exact user ID",
+            "schema": {
+              "example": "ngozi",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Users matching the query"
+          }
+        },
+        "tags": [
+          "users"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "MeController_me",
+        "summary": "My profile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/preferences": {
+      "get": {
+        "operationId": "MeController_getPreferences",
+        "summary": "My notification preferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "MeController_updatePreferences",
+        "summary": "Update my notification preferences",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/consents": {
+      "get": {
+        "operationId": "MeController_consentHistory",
+        "summary": "My consent history (newest first)",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "sms",
+                "email",
+                "push",
+                "whatsapp",
+                "in_app"
+              ],
               "type": "string"
             }
           }
@@ -436,7 +583,127 @@
           }
         },
         "tags": [
-          "templates"
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "MeController_recordConsent",
+        "summary": "Record my own consent (opt in or out)",
+        "description": "Append-only, same as the ops endpoint. IP address and user agent are always taken from this request, never from the body.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordConsentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/consents/status": {
+      "get": {
+        "operationId": "MeController_consentStatus",
+        "summary": "My current consent, per channel",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/notifications": {
+      "get": {
+        "operationId": "MeController_notificationsForMe",
+        "summary": "My notifications (newest first)",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/notifications/{notificationId}/read": {
+      "patch": {
+        "operationId": "MeController_markRead",
+        "summary": "Mark one of my notifications as read",
+        "parameters": [
+          {
+            "name": "notificationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "me"
         ],
         "security": [
           {
@@ -743,6 +1010,37 @@
         ]
       }
     },
+    "/api/v1/templates/{eventType}/ab-performance": {
+      "get": {
+        "operationId": "AbTestingController_getPerformance",
+        "summary": "Get A/B variant performance for an event type",
+        "description": "Returns exposure count, delivery rate, and read rate per template variant. Used to decide whether to promote a variant to control.",
+        "parameters": [
+          {
+            "name": "eventType",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "SIPX-001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "templates"
+        ],
+        "security": [
+          {
+            "JWT": []
+          }
+        ]
+      }
+    },
     "/api/v1/analytics/delivery-rates": {
       "get": {
         "operationId": "AnalyticsController_getDeliveryRates",
@@ -988,6 +1286,120 @@
           },
           "401": {
             "description": "Invalid or expired refresh token"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/otp/request": {
+      "post": {
+        "operationId": "UserAuthController_request",
+        "summary": "Request a login code, by SMS or email",
+        "description": "Provide exactly one of `phone` (SMS) or `email`. Always returns the same shape whether or not the identifier belongs to an account — this endpoint cannot be used to check which phone numbers or emails are registered.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestOtpDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A code was requested"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/otp/verify": {
+      "post": {
+        "operationId": "UserAuthController_verify",
+        "summary": "Verify a login code and receive a USER token",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyOtpDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token issued"
+          },
+          "401": {
+            "description": "Incorrect or expired code"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/signup/request": {
+      "post": {
+        "operationId": "SignupController_request",
+        "summary": "Start creating an account: request a verification code",
+        "description": "Provide a name and exactly one of `phone` (SMS) or `email`. Unlike /auth/otp/request, this DOES say if the identifier is already registered (409) — you cannot sign up twice with the same phone/email.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestSignupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A code was sent"
+          },
+          "409": {
+            "description": "That phone/email is already registered"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/signup/verify": {
+      "post": {
+        "operationId": "SignupController_verify",
+        "summary": "Finish creating the account and receive a USER token",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifySignupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Account created, token issued"
+          },
+          "401": {
+            "description": "Incorrect or expired code"
+          },
+          "409": {
+            "description": "Someone else registered this identifier first"
           }
         },
         "tags": [
@@ -1372,6 +1784,22 @@
         "properties": {}
       },
       "RefreshDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestOtpDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "VerifyOtpDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestSignupDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "VerifySignupDto": {
         "type": "object",
         "properties": {}
       }

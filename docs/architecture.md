@@ -200,7 +200,6 @@ BE-6B-NotificationEngine-YourName/
 ├── docker-compose.test.yml
 ├── Dockerfile                      # Multi-stage: builder → production
 ├── .env.example
-├── .zetheta-project.json
 ├── tsconfig.json                   # strict: true, noImplicitAny: true
 ├── jest.config.ts
 ├── package.json

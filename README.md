@@ -4,6 +4,10 @@
 
 A production-grade, event-driven notification platform designed for financial services. The system processes more than 25 financial event types and delivers notifications across SMS, Email, Push, WhatsApp, and In-App channels while enforcing TRAI DND compliance, frequency capping, quiet-hour restrictions, intelligent failover, and real-time operational analytics.
 
+**Live demo:** _add your deployed URLs here once you've followed [DEPLOYMENT-CLOUD.md](DEPLOYMENT-CLOUD.md)._ It runs on free tiers
+(Render backend, Vercel frontend), so the very first request after a quiet spell can take up to a minute to wake up — a well-known
+free-tier trade-off, not a bug.
+
 ---
 
 ## Overview

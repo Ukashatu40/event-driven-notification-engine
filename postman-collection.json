@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "be6b-notification-engine-collection",
     "name": "BE-6B Event-Driven Notification Engine",
-    "description": "Pre-configured API test requests for the Zetheta BE-6B assessment.\nSpec Appendix A defines the exact contract shapes validated here.\n\nSetup:\n1. Set `baseUrl` variable to `http://localhost:3000`\n2. POST /api/v1/auth/login to obtain a token\n3. The login response sets `authToken` automatically via the test script",
+    "description": "Pre-configured API test requests for the Event-Driven Notification Engine.\nSee docs/api-specification.json for the exact contract shapes validated here.\n\nSetup:\n1. Set `baseUrl` variable to `http://localhost:3000`\n2. POST /api/v1/auth/login to obtain a token\n3. The login response sets `authToken` automatically via the test script",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

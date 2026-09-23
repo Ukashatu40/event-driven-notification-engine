@@ -7,6 +7,49 @@ AI acceleration noted per section E4 guidelines.
 
 ---
 
+## Post-Day-15 (6) — free multi-cloud deployment path
+
+- **`DEPLOYMENT-CLOUD.md`**: a separate deployment target from the Docker Compose guide — Postgres on Neon, Redis + Kafka on
+  Upstash, RabbitMQ on CloudAMQP, the app on Render, the console on Vercel. All free tiers, verified against each provider's
+  current docs rather than assumed. `.env.cloud.example` maps each provider's dashboard value to the right env var.
+- Fixed a real bug found while wiring this up: `prisma.config.js` (a Prisma 7 config file, at the project root) was never actually
+  copied into the **production** Docker stage — only into `builder`, which is why the existing `migrate` Compose service (which
+  runs from `builder`) worked while a from-scratch attempt to run `prisma migrate deploy` from the production image failed with a
+  misleading "datasource.url is required" even though `DATABASE_URL` was set correctly. Fixed by copying it explicitly in both
+  stages; also converted it from `.ts` to plain `.js` so it needs no TypeScript at runtime (a devDependency, correctly not shipped
+  in production) — one less way for config loading to silently do nothing.
+- `prisma` moved from `devDependencies` to `dependencies` — the CLI needs to be resolvable at runtime for the new optional
+  migrate-on-boot path below (verified: it was silently absent from the production image before this).
+- New `docker/entrypoint.sh`, opt-in via `RUN_MIGRATIONS_ON_BOOT=true`: runs `prisma migrate deploy` once before the app starts,
+  for a host (Render) with no equivalent to Compose's one-shot `migrate` service. Unset locally, so Compose is unaffected —
+  verified both paths directly (migrations-then-healthy-boot with the flag set; unchanged normal boot without it).
+- `REDIS_TLS` (`src/infrastructure/redis/redis.service.ts`): Upstash Redis requires TLS; the ioredis client had no `tls` option at
+  all. Same "explicit, never inferred from `NODE_ENV`" pattern as `KAFKA_SSL`.
+- `npm run seed:me -- --email=you@example.com` creates/updates one user with a real, chosen email (and optionally phone) — the
+  bulk-seeded users have fake test contact details that can never actually receive an OTP.
+- `npm run whoami` prints a few real seeded users' decrypted contact details, for local testing only.
+- Portal/ops login pages now cross-link to each other (`/login` ↔ `/portal/login`) — previously reachable only by typing the URL.
+
+## Post-Day-15 (5) — end-user login and self-service (ADR-008)
+
+- **Phone/email + OTP login for end users**: `POST /api/v1/auth/otp/request` and `/verify` issue a new `USER`-role token — no static
+  credential exists for it, only OTP verification. The code is sent synchronously through the existing SMS/email providers, is never
+  stored (only its hash, 5 min TTL), and both endpoints are enumeration-safe (identical response/failure whether or not the identifier
+  is registered).
+- **`/api/v1/me/*`**: profile, preferences, consent (history/status/record), notifications and mark-as-read — every handler takes its
+  id from the verified token, never from a route parameter, so there is no ownership check to get wrong. Delegates to the existing
+  preferences/consent/notifications services; no logic duplicated.
+- **`GET /api/v1/users`**: search/list users by name or exact id (`src/users/`) — the console had no way to find a user besides pasting
+  a UUID. Never returns phone/email, even ciphertext.
+- Fixed a real bug found while building the above: `POST /notifications/:id/read` wrote `status: READ` directly and then asked the
+  state machine to also transition to READ, which always rejected its own READ→READ and 422'd — the endpoint never worked. It now
+  makes one transition and nothing else.
+- Fixed `NotificationPreviewService` never passing `currency` to the renderer, so every preview showed ₹ regardless of the user's
+  market. Added the missing SMS template for TXNX-004 and email template for TXNX-005 (both previously undefined for that channel).
+- `GET /notifications/:id` now additionally returns `user_name` (additive; `user_id` unchanged).
+- `rbac-policy.spec.ts`'s controller list — a hand-maintained list, not an automatic scan — had silently not covered `UsersController`
+  since it shipped; fixed, and the new controllers were added in the same change that introduces them.
+
 ## Post-Day-15 (4) — deployment hardening
 
 - **Preflight** (`scripts/bash/deploy/preflight.sh`): refuses unsafe configs (missing/short/placeholder/reused secrets, `NODE_ENV`, localhost CORS, `CONSENT_ENFORCEMENT=off`, tracked `.env`, invalid compose/alert rules); never prints values.
@@ -328,8 +371,8 @@ AI acceleration noted per section E4 guidelines.
 - **Bonus B3.4 — Notification preview:** `POST /api/v1/notifications/preview`
 - **Bonus B3.4 — Send-time optimisation:** Per-user hourly engagement scoring with decay
 - **Bonus B3.4 — WebSocket dashboard:** Real-time metrics via Socket.io
-- Repository transferred to @ZethetaIntern
-- **Git commit:** `chore: final documentation and cleanup for repository transfer`
+- Repository-transfer checklist documented in DEPLOYMENT.md
+- **Git commit:** `chore: final documentation and cleanup`
 - _AI acceleration:_ Claude used throughout for code review, error diagnosis, and spec compliance audit
 
 ---
