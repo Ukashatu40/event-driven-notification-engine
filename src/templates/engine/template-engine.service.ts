@@ -923,6 +923,10 @@ export class TemplateEngineService implements OnModuleInit {
         eventType: 'TXNX-004',
         version: 1,
         channels: {
+          sms: {
+            body: '{{company}} dividend credited: {{amount}}. -{{app_name}}',
+            senderId: 'WLTHBR',
+          },
           email: {
             subject: 'Dividend Credited: {{company}} — {{amount}}',
             textBody:
@@ -962,6 +966,12 @@ export class TemplateEngineService implements OnModuleInit {
               'Funds Deposited: {{amount}} from {{source}}.' +
               '{{#if available_balance}} Available balance: {{available_balance}}.{{/if}} -{{app_name}}',
             senderId: 'WLTHBR',
+          },
+          email: {
+            subject: 'Funds Deposited: {{amount}} from {{source}}',
+            textBody:
+              'Dear {{user_name}}, {{amount}} has been deposited to your account from {{source}}.' +
+              '{{#if available_balance}} Your available balance is now {{available_balance}}.{{/if}}',
           },
           push: {
             title: '✅ Funds Deposited',

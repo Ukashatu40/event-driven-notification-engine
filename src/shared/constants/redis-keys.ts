@@ -61,6 +61,23 @@ export const REDIS_KEYS = {
   authRefresh: (jti: string) => `auth:refresh:${jti}`,
   authRevokedFamily: (family: string) => `auth:revoked:${family}`,
 
+  // End-user OTP login: state per request id, plus a per-identifier cooldown/
+  // rate limit. Keyed by the phone/email blind-index hash, never the raw
+  // value (same rule as dndStatus) — one shared namespace for both channels.
+  otpRequest: (requestId: string) => `auth:otp:req:${requestId}`,
+  otpSendCooldown: (identifierHash: string) =>
+    `auth:otp:cooldown:${identifierHash}`,
+  otpRequestRate: (identifierHash: string) => `auth:otp:rate:${identifierHash}`,
+
+  // Sign-up: same shape as login OTP, deliberately separate keys — a signup
+  // attempt and a login attempt for the same identifier never share a budget.
+  // Nothing is written to Postgres until the code here is verified.
+  signupRequest: (requestId: string) => `auth:signup:req:${requestId}`,
+  signupSendCooldown: (identifierHash: string) =>
+    `auth:signup:cooldown:${identifierHash}`,
+  signupRequestRate: (identifierHash: string) =>
+    `auth:signup:rate:${identifierHash}`,
+
   // Send-time optimisation — per-user hourly open rates
   sendTimeScores: (userId: string) => `sto:${userId}:hourly_scores`,
 } as const;

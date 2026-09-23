@@ -36,6 +36,12 @@ import { DashboardModule } from '../dashboard/dashboard.module';
     DispatchService,
     CircuitBreakerService,
     RetryWorkerService,
+    // Needed by OtpService (src/auth/otp.service.ts), which sends the OTP
+    // directly through a provider rather than through the full send pipeline.
+    Msg91Provider,
+    TermiiProvider,
+    TwilioProvider,
+    NodemailerProvider,
   ],
 })
 export class DeliveryModule {}

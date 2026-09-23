@@ -36,6 +36,7 @@ export class NotificationsService {
       include: {
         stateLogs: { orderBy: { createdAt: 'asc' } },
         deliveryAttemptLogs: { orderBy: { attemptedAt: 'asc' } },
+        user: { select: { name: true } },
       },
     });
 
@@ -47,6 +48,10 @@ export class NotificationsService {
       notificationId: notification.id,
       eventType: notification.eventType,
       userId: notification.userId,
+      // Additive field, not in the original spec contract: the recipient's
+      // name, so the console can show more than a bare UUID. `userId` is
+      // untouched for anything relying on the documented shape.
+      userName: notification.user?.name ?? null,
       channel: notification.channel,
       priority: notification.priority,
       status: notification.status,
@@ -131,19 +136,15 @@ export class NotificationsService {
       throw new NotFoundException(`Notification ${notificationId} not found`);
     }
 
-    // Update state database fields
-    await this.prisma.notification.update({
-      where: { id: notificationId },
-      data: {
-        status: 'READ' as any, // Adjust or cast to your exact NotificationStatus enum if needed
-        // readAt: new Date() // Uncomment if your schema includes a readAt timestamp
-      },
-    });
-
-    // Execute engine state transition log entry
+    // StateService.transition() writes the status column and the state-log
+    // entry in one transaction (and validates DELIVERED -> READ). It was
+    // previously preceded by a direct `status: 'READ'` update here, which set
+    // the column before transition() read it as `from` — so every call tried
+    // READ -> READ, always throwing INVALID_STATE_TRANSITION after already
+    // (silently) writing the status with no log entry to show for it.
     await this.stateService.transition(
       notificationId,
-      'READ' as never,
+      NotificationStatus.READ,
       'user_interaction',
       { readBy: userId },
     );

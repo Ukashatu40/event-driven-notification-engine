@@ -24,6 +24,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       maxRetriesPerRequest: this.configService.get<number>(
         'redis.maxRetriesPerRequest',
       ),
+      // ioredis wants a tls options object, not a boolean; {} means "use TLS
+      // with the defaults" (host-based SNI, standard cert verification).
+      tls: this.configService.get<boolean>('redis.tls') ? {} : undefined,
       lazyConnect: false,
       keepAlive: 30_000,
       enableReadyCheck: true,
