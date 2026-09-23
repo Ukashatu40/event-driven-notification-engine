@@ -35,7 +35,7 @@ echo
 # ── required and non-empty ──────────────────────────────────────────────────
 echo "Required settings"
 for k in NODE_ENV DATABASE_URL DB_HOST DB_NAME DB_USER DB_PASSWORD REDIS_HOST REDIS_PASSWORD \
-         KAFKA_BROKERS KAFKA_CLIENT_ID RABBITMQ_URL RABBITMQ_USER RABBITMQ_PASSWORD \
+         KAFKA_BROKERS KAFKA_CLIENT_ID RABBITMQ_URL \
          JWT_SECRET JWT_REFRESH_SECRET PII_ENCRYPTION_KEY PII_HASH_KEY \
          WEBHOOK_SIGNATURE_SECRET SMTP_HOST SMTP_FROM; do
   [ -n "$(get "$k")" ] || err "$k is not set"
