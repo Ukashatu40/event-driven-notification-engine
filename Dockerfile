@@ -8,6 +8,7 @@ WORKDIR /app
 # Copy package files first for better layer caching
 COPY package*.json ./
 COPY prisma ./prisma/
+COPY prisma.config.js ./
 
 # Install all dependencies including devDependencies
 RUN npm ci --legacy-peer-deps
@@ -33,6 +34,11 @@ RUN addgroup -g 1001 -S nodejs && \
 # Copy package files
 COPY package*.json ./
 COPY prisma ./prisma/
+# Prisma's config file lives at the project root, not inside prisma/ — without
+# it, `prisma migrate deploy` (run at boot when RUN_MIGRATIONS_ON_BOOT=true)
+# cannot find DATABASE_URL and fails with a misleading "datasource.url is
+# required" even though the env var is set correctly.
+COPY prisma.config.js ./
 
 # Install production dependencies only (--omit=dev replaces the deprecated --only=production)
 RUN npm ci --omit=dev --legacy-peer-deps && \
@@ -44,6 +50,8 @@ RUN npm ci --omit=dev --legacy-peer-deps && \
 # file into a new layer, which duplicated the whole of node_modules in the image.
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/src/templates/locales ./src/templates/locales
+COPY --chown=nestjs:nodejs docker/entrypoint.sh ./docker/entrypoint.sh
+RUN chmod +x ./docker/entrypoint.sh
 
 # node_modules and package files are created as root above; only the paths the
 # app WRITES to need to belong to the non-root user (Prisma's generated client).
@@ -59,5 +67,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget -qO- http://127.0.0.1:3000/ready || exit 1
 
-# Start the application
-CMD ["node", "dist/src/main"]
+# Start the application. entrypoint.sh conditionally runs `prisma migrate
+# deploy` first (see docker/entrypoint.sh) when RUN_MIGRATIONS_ON_BOOT=true —
+# for a host with no equivalent to Compose's one-shot `migrate` service.
+CMD ["./docker/entrypoint.sh"]

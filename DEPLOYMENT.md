@@ -170,13 +170,14 @@ or short-lived state (caps, dedup, digest buckets, refresh tokens — losing it 
 - Put a TLS-terminating reverse proxy / load balancer in front of `app:3000` (`trustProxy` is on, so client IPs are honoured for rate limiting).
 - Image size is ~1.1 GB (target was 200 MB): ~170 MB is OpenTelemetry packages nothing imports — removing them is the next-largest saving.
 
-## 7. Repository transfer (spec Day 15)
+## 7. Moving to a new repository
 
 1. `git status` clean on `main`; CI green (lint, unit ≥ 80 % coverage, alert-rule check, integration + e2e).
-2. Repo → **Settings → Collaborators** → add `@ZethetaIntern`.
-3. Repo → **Settings → General → Transfer ownership** → `ZethetaIntern` (name: `BE-6B-NotificationEngine-<YourName>`).
-4. Verify on the new owner: all branches and history present, Actions enabled, secrets re-created (they do not transfer), `.zetheta-project.json`'s `github_repo_url` matches.
-5. Rotate every credential that ever appeared in the repository history (the old `SERVICE_API_KEY` was committed in `.env.example`).
+2. Push to the new remote with full history (`git remote add new-origin <url> && git push new-origin --all --tags`), or use your Git
+   host's transfer/import feature if moving an existing repo to a new owner.
+3. On the new remote: confirm all branches and history are present, enable Actions/CI, and re-create any repository secrets — they
+   never transfer automatically.
+4. Rotate every credential that ever appeared in the repository history (the old `SERVICE_API_KEY` was committed in `.env.example`).
 
 ## 8. Known limitations
 
