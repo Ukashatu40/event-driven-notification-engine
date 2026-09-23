@@ -146,7 +146,19 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<Record<string, string>>('kafka.topics');
     if (!topics) return;
 
-    const topicList = Object.values(topics).map((topic) => ({
+    // Only the topics the engine actually subscribes to or publishes on —
+    // NOT every name kafka.config.ts happens to define. 'routing' /
+    // 'delivery' / 'status' / 'analytics' are reserved for future use;
+    // nothing in this codebase reads or writes them today. Auto-creating
+    // them anyway broke boot against Aiven's free plan (POLICY_VIOLATION —
+    // a topic-count/partition-count cap the free plan enforces) for topics
+    // that were never going to be used in the first place.
+    const usedKeys = ['events', 'critical', 'dlq'] as const;
+    const usedTopics = Object.fromEntries(
+      usedKeys.filter((k) => k in topics).map((k) => [k, topics[k]]),
+    );
+
+    const topicList = Object.values(usedTopics).map((topic) => ({
       topic,
       numPartitions: topic.includes('critical') ? 3 : 6,
       replicationFactor: 1,

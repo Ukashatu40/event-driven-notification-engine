@@ -1,21 +1,32 @@
 // tests/unit/infrastructure/kafka.service.spec.ts
 //
-// Only the SSL/CA/client-cert construction branch — the rest of KafkaService
-// is exercised by the real broker in integration/e2e tests. Two bugs only
-// showed up against a real managed broker, so they're worth locking down
-// here rather than re-discovering them on the next provider switch:
+// The SSL/CA/client-cert construction branch, plus topic auto-provisioning —
+// the rest of KafkaService is exercised by the real broker in
+// integration/e2e tests. Three bugs only showed up against a real managed
+// broker, so they're worth locking down here rather than re-discovering
+// them on the next provider switch:
 //   1. KAFKA_SSL=true alone rejects Aiven's self-issued broker cert with
 //      "self-signed certificate in certificate chain" (needs the CA).
 //   2. Some Aiven Kafka services additionally require mutual TLS — the
 //      broker sends "certificate required" before Kafka's own protocol
 //      (SASL included) even starts, independent of correct SASL config.
+//   3. ensureTopicsExist() tried to auto-create ALL 7 topic names defined
+//      in kafka.config.ts, including 4 nothing reads or writes — Aiven's
+//      free plan rejected those with POLICY_VIOLATION and broke boot.
 const kafkaCtor = jest.fn();
+const adminListTopics = jest.fn().mockResolvedValue([]);
+const adminCreateTopics = jest.fn().mockResolvedValue(undefined);
 jest.mock('kafkajs', () => ({
   Kafka: jest.fn().mockImplementation((config: unknown) => {
     kafkaCtor(config);
     return {
       producer: () => ({ connect: jest.fn(), disconnect: jest.fn() }),
-      admin: () => ({ connect: jest.fn(), disconnect: jest.fn() }),
+      admin: () => ({
+        connect: jest.fn(),
+        disconnect: jest.fn(),
+        listTopics: adminListTopics,
+        createTopics: adminCreateTopics,
+      }),
     };
   }),
 }));
@@ -169,5 +180,53 @@ describe('normalizePemMaterial', () => {
   it('falls through unchanged when it is neither — never silently drops a broken value', () => {
     const garbage = 'not a certificate at all';
     expect(normalizePemMaterial(garbage)).toBe(garbage);
+  });
+});
+
+describe('KafkaService.ensureTopicsExist (topic auto-provisioning)', () => {
+  const allTopics = {
+    events: 'notification-events',
+    critical: 'notification-critical',
+    routing: 'notification-routing',
+    delivery: 'notification-delivery',
+    status: 'notification-status',
+    analytics: 'notification-analytics',
+    dlq: 'notification-dlq',
+  };
+
+  beforeEach(() => {
+    adminListTopics.mockReset().mockResolvedValue([]);
+    adminCreateTopics.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('only ever tries to create the 3 topics the engine actually uses, never the 4 unused reserved names', async () => {
+    const svc = build({ 'kafka.ssl': false, 'kafka.topics': allTopics });
+    await svc.onModuleInit();
+
+    expect(adminCreateTopics).toHaveBeenCalledTimes(1);
+    const created = adminCreateTopics.mock.calls[0][0].topics.map(
+      (t: { topic: string }) => t.topic,
+    );
+    expect(created.sort()).toEqual([
+      'notification-critical',
+      'notification-dlq',
+      'notification-events',
+    ]);
+    expect(created).not.toContain('notification-routing');
+    expect(created).not.toContain('notification-delivery');
+    expect(created).not.toContain('notification-status');
+    expect(created).not.toContain('notification-analytics');
+  });
+
+  it('skips a topic that already exists, and creates nothing at all once all three do', async () => {
+    adminListTopics.mockResolvedValue([
+      'notification-events',
+      'notification-critical',
+      'notification-dlq',
+    ]);
+    const svc = build({ 'kafka.ssl': false, 'kafka.topics': allTopics });
+    await svc.onModuleInit();
+
+    expect(adminCreateTopics).not.toHaveBeenCalled();
   });
 });
