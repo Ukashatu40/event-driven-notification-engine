@@ -1,11 +1,14 @@
 // tests/unit/infrastructure/kafka.service.spec.ts
 //
-// Only the SSL/CA construction branch — the rest of KafkaService is exercised
-// by the real broker in integration/e2e tests. This one bug (KAFKA_SSL=true
-// alone rejecting Aiven's self-issued broker cert with "self-signed
-// certificate in certificate chain") only shows up against a real managed
-// broker, so it's worth locking the fix down here rather than re-discovering
-// it on the next provider switch.
+// Only the SSL/CA/client-cert construction branch — the rest of KafkaService
+// is exercised by the real broker in integration/e2e tests. Two bugs only
+// showed up against a real managed broker, so they're worth locking down
+// here rather than re-discovering them on the next provider switch:
+//   1. KAFKA_SSL=true alone rejects Aiven's self-issued broker cert with
+//      "self-signed certificate in certificate chain" (needs the CA).
+//   2. Some Aiven Kafka services additionally require mutual TLS — the
+//      broker sends "certificate required" before Kafka's own protocol
+//      (SASL included) even starts, independent of correct SASL config.
 const kafkaCtor = jest.fn();
 jest.mock('kafkajs', () => ({
   Kafka: jest.fn().mockImplementation((config: unknown) => {
@@ -19,7 +22,7 @@ jest.mock('kafkajs', () => ({
 
 import {
   KafkaService,
-  normalizeCaCert,
+  normalizePemMaterial,
 } from '../../../src/infrastructure/kafka/kafka.service';
 
 function build(config: Record<string, unknown>) {
@@ -35,7 +38,7 @@ describe('KafkaService SSL construction', () => {
     expect(kafkaCtor.mock.calls[0][0].ssl).toBeUndefined();
   });
 
-  it('ssl:true with no CA behaves exactly as before (plain ssl:true)', () => {
+  it('ssl:true with nothing else behaves exactly as before (plain ssl:true)', () => {
     build({ 'kafka.ssl': true, 'kafka.sslCa': '' });
     expect(kafkaCtor.mock.calls[0][0].ssl).toBe(true);
   });
@@ -70,25 +73,72 @@ describe('KafkaService SSL construction', () => {
     });
     expect(kafkaCtor.mock.calls[0][0].ssl.ca[0]).toBe(pem);
   });
+
+  it('a client cert+key is sent alongside the CA — the mutual-TLS fix', () => {
+    const ca = '-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----';
+    const cert = '-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----';
+    const key = '-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----';
+    build({
+      'kafka.ssl': true,
+      'kafka.sslCa': ca,
+      'kafka.sslClientCert': cert,
+      'kafka.sslClientKey': key,
+    });
+    expect(kafkaCtor.mock.calls[0][0].ssl).toEqual({
+      ca: [ca],
+      cert,
+      key,
+      rejectUnauthorized: true,
+    });
+  });
+
+  it('a client cert without a CA still works — mTLS-only, no separate CA configured', () => {
+    const cert = '-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----';
+    const key = '-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----';
+    build({
+      'kafka.ssl': true,
+      'kafka.sslClientCert': cert,
+      'kafka.sslClientKey': key,
+    });
+    expect(kafkaCtor.mock.calls[0][0].ssl).toEqual({
+      cert,
+      key,
+      rejectUnauthorized: true,
+    });
+  });
+
+  it('a cert with no matching key is ignored — half a keypair authenticates nothing', () => {
+    build({
+      'kafka.ssl': true,
+      'kafka.sslClientCert':
+        '-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----',
+    });
+    expect(kafkaCtor.mock.calls[0][0].ssl).toBe(true);
+  });
 });
 
-describe('normalizeCaCert', () => {
+describe('normalizePemMaterial', () => {
   const pem = '-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----';
 
   it('passes real PEM through unchanged', () => {
-    expect(normalizeCaCert(pem)).toBe(pem);
+    expect(normalizePemMaterial(pem)).toBe(pem);
   });
 
   it('un-escapes a literal backslash-n', () => {
-    expect(normalizeCaCert(pem.replace(/\n/g, '\\n'))).toBe(pem);
+    expect(normalizePemMaterial(pem.replace(/\n/g, '\\n'))).toBe(pem);
   });
 
   it('decodes base64', () => {
-    expect(normalizeCaCert(Buffer.from(pem).toString('base64'))).toBe(pem);
+    expect(normalizePemMaterial(Buffer.from(pem).toString('base64'))).toBe(pem);
+  });
+
+  it('also recognizes a private key, not just a certificate', () => {
+    const key = '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----';
+    expect(normalizePemMaterial(Buffer.from(key).toString('base64'))).toBe(key);
   });
 
   it('falls through unchanged when it is neither — never silently drops a broken value', () => {
     const garbage = 'not a certificate at all';
-    expect(normalizeCaCert(garbage)).toBe(garbage);
+    expect(normalizePemMaterial(garbage)).toBe(garbage);
   });
 });

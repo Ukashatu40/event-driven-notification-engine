@@ -120,6 +120,15 @@ services:
       # `base64 -i ca.pem | tr -d '\n'`; on Linux, `base64 -w0 ca.pem`.
       - key: KAFKA_SSL_CA
         sync: false
+      # Only needed if `openssl s_client -CAfile ca.pem ...` against your
+      # broker shows "Verification: OK" followed by a "certificate required"
+      # alert — some Aiven Kafka services require mutual TLS regardless of
+      # SASL. Same Overview page as the CA: "Access Certificate" / "Access
+      # Key", each base64'd the same way. Leave both blank otherwise.
+      - key: KAFKA_SSL_CLIENT_CERT
+        value: ''
+      - key: KAFKA_SSL_CLIENT_KEY
+        value: ''
       - key: RABBITMQ_URL
         sync: false
       - key: SMTP_HOST

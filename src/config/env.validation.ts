@@ -38,6 +38,9 @@ export const envValidationSchema = Joi.object({
   // PEM CA certificate for a provider (e.g. Aiven) whose Kafka broker uses
   // its own CA rather than a publicly trusted one. See kafka.config.ts.
   KAFKA_SSL_CA: Joi.string().allow('').default(''),
+  // Mutual TLS — required by some Aiven Kafka services regardless of SASL.
+  KAFKA_SSL_CLIENT_CERT: Joi.string().allow('').default(''),
+  KAFKA_SSL_CLIENT_KEY: Joi.string().allow('').default(''),
   CONSENT_ENFORCEMENT: Joi.string()
     .valid('enforce', 'audit', 'off')
     .default('enforce'),

@@ -49,6 +49,20 @@ creates and uses 3, comfortably inside that cap.
    also works — the app detects either form — but base64 is the one that can't go wrong in transit.
 6. `KAFKA_BROKERS` = `host:port`, `KAFKA_SSL` = `true`, `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD` = from step 4,
    `KAFKA_SSL_CA` = the base64 string from step 5.
+7. **Some Aiven Kafka services require mutual TLS even when you intend to use SASL** — the broker demands a client certificate at
+   the raw TLS layer, before Kafka's own protocol (SASL included) ever starts, which fails with `tlsv13 alert certificate
+   required` regardless of how correct your SASL username/password are. Diagnose this independently of Render/the app first:
+   ```bash
+   openssl s_client -connect <host>:<port> -CAfile ca.pem -brief
+   ```
+   `Verification: OK` followed immediately by an `alert certificate required` / `SSL alert number 116` error means this is what's
+   happening. Fix: same **Overview** page as the CA → **Access Certificate** and **Access Key** → download both → set
+   `KAFKA_SSL_CLIENT_CERT` and `KAFKA_SSL_CLIENT_KEY` (base64 each, same command as step 5). Confirm it actually works before
+   touching Render:
+   ```bash
+   openssl s_client -connect <host>:<port> -CAfile ca.pem -cert access.crt -key access.key -brief
+   ```
+   No alert this time means it's fixed — paste both base64 values into Render and redeploy.
 
 One free-tier quirk worth knowing: Aiven auto-pauses an idle free Kafka service ("idle shutdown") and also pauses a brand-new one
 that sees no traffic in its first few hours ("first-use shutdown") — send a real event through the app soon after setup so it

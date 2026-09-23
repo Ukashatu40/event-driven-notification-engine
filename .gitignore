@@ -4,6 +4,8 @@ node_modules
 
 /generated/prisma
 ca.pem
+service.key
+service.cert
 .env
 .env.local
 .env.development

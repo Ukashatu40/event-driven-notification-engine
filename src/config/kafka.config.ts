@@ -51,6 +51,11 @@ export const kafkaConfig = registerAs('kafka', () => ({
   // certificate (PEM) here to fix it; left empty, `ssl: true` behaves exactly
   // as before for a broker with a real public CA.
   sslCa: process.env.KAFKA_SSL_CA ?? '',
+  // Some Aiven Kafka services require mutual TLS (a client cert) at the raw
+  // TLS layer, independent of SASL — see kafka.service.ts. Both from the
+  // same Aiven console page as the CA: "Access Certificate" / "Access Key".
+  sslClientCert: process.env.KAFKA_SSL_CLIENT_CERT ?? '',
+  sslClientKey: process.env.KAFKA_SSL_CLIENT_KEY ?? '',
   sasl:
     process.env.KAFKA_SASL_USERNAME && process.env.KAFKA_SASL_PASSWORD
       ? {

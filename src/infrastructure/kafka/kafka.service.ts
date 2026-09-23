@@ -18,25 +18,23 @@ import {
 } from 'kafkajs';
 
 /**
- * Accepts KAFKA_SSL_CA as raw PEM (real newlines), PEM with literal "\n"
- * escapes (some env-var UIs flatten real newlines on paste), or — the
- * recommended form — base64 of the whole PEM file. Base64 is the robust
- * choice: it's genuinely one line, so there is nothing left for a web form's
- * text input to mangle, unlike a multi-line paste (a single-line `<input>`
- * commonly collapses newlines into nothing, not even a literal "\n", which
- * left the previous "\n"-only fix unable to help — the resulting jammed-
- * together string isn't valid PEM, and kafkajs fails exactly as if no CA
- * had been given at all: the same "self-signed certificate" error).
+ * Accepts a CA cert, client cert, or private key as raw PEM (real newlines),
+ * PEM with literal "\n" escapes (some env-var UIs flatten real newlines on
+ * paste), or — the recommended form — base64 of the whole PEM file. Base64
+ * is the robust choice: it's genuinely one line, so there is nothing left
+ * for a web form's text input to mangle, unlike a multi-line paste (a
+ * single-line `<input>` commonly collapses newlines into nothing, not even
+ * a literal "\n", which left a "\n"-only fix unable to help — the resulting
+ * jammed-together string isn't valid PEM, and kafkajs fails exactly as if
+ * nothing had been given at all).
  */
-export function normalizeCaCert(raw: string): string {
+export function normalizePemMaterial(raw: string): string {
   const withRealNewlines = raw.replace(/\\n/g, '\n');
-  if (withRealNewlines.includes('-----BEGIN CERTIFICATE-----')) {
+  if (withRealNewlines.includes('-----BEGIN')) {
     return withRealNewlines;
   }
   const decoded = Buffer.from(raw.trim(), 'base64').toString('utf8');
-  return decoded.includes('-----BEGIN CERTIFICATE-----')
-    ? decoded
-    : withRealNewlines;
+  return decoded.includes('-----BEGIN') ? decoded : withRealNewlines;
 }
 
 export interface KafkaMessage {
@@ -73,13 +71,29 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
     const ssl = this.configService.get<boolean>('kafka.ssl');
     if (ssl) {
       const sslCa = this.configService.get<string>('kafka.sslCa');
+      const clientCert = this.configService.get<string>('kafka.sslClientCert');
+      const clientKey = this.configService.get<string>('kafka.sslClientKey');
       // A provider-issued CA (Aiven, etc.) beats plain `ssl: true`, which
       // only trusts Node's public root store and rejects a broker cert
-      // signed by the provider's own CA. See normalizeCaCert() for why the
-      // raw value can be PEM, "\n"-escaped PEM, or (recommended) base64.
-      kafkaConfig.ssl = sslCa
-        ? { ca: [normalizeCaCert(sslCa)], rejectUnauthorized: true }
-        : true;
+      // signed by the provider's own CA. See normalizePemMaterial() for why
+      // the raw value can be PEM, "\n"-escaped PEM, or (recommended) base64.
+      //
+      // Some Aiven Kafka services additionally REQUIRE a client certificate
+      // at the raw TLS layer — the broker sends a "certificate required"
+      // alert before Kafka's own protocol (SASL included) ever starts, so
+      // no amount of correct SASL config fixes it. Providing cert+key here
+      // satisfies that independently of whether SASL is also configured
+      // below; a broker that only wants SASL simply never asks for one.
+      if (sslCa || (clientCert && clientKey)) {
+        kafkaConfig.ssl = { rejectUnauthorized: true };
+        if (sslCa) kafkaConfig.ssl.ca = [normalizePemMaterial(sslCa)];
+        if (clientCert && clientKey) {
+          kafkaConfig.ssl.cert = normalizePemMaterial(clientCert);
+          kafkaConfig.ssl.key = normalizePemMaterial(clientKey);
+        }
+      } else {
+        kafkaConfig.ssl = true;
+      }
     }
 
     const sasl = this.configService.get('kafka.sasl');
