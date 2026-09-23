@@ -100,7 +100,12 @@ export const envValidationSchema = Joi.object({
   SMTP_PORT: Joi.number().default(587),
   SMTP_USER: Joi.string().allow('').default(''),
   SMTP_PASS: Joi.string().allow('').default(''),
-  SMTP_FROM: Joi.string().email().required(),
+  // tlds: { allow: false } — Joi's default .email() checks the domain
+  // against a real IANA TLD list, which rejects reserved test domains like
+  // noreply@example.test (RFC 2606) that CI/local configs legitimately use.
+  SMTP_FROM: Joi.string()
+    .email({ tlds: { allow: false } })
+    .required(),
 
   // FCM
   FCM_PROJECT_ID: Joi.string().allow('').default(''),

@@ -25,10 +25,14 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 
 export async function buildOpenApi(): Promise<Record<string, unknown>> {
+  // 'error' only, not false — a fatal bootstrap failure (e.g. a Joi config
+  // validation error) must still be visible. A fully silent logger once
+  // made ConfigModule.forRoot() throw with zero output, so `--check`
+  // exited 1 with no clue why (see the CI incident this comment survives).
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter(),
-    { logger: false },
+    { logger: ['error'] },
   );
   configureApp(app);
 
