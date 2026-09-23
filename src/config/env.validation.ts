@@ -35,6 +35,9 @@ export const envValidationSchema = Joi.object({
   ADMIN_API_KEY: Joi.string().optional().allow(''),
 
   KAFKA_SSL: Joi.string().valid('true', 'false').default('false'),
+  // PEM CA certificate for a provider (e.g. Aiven) whose Kafka broker uses
+  // its own CA rather than a publicly trusted one. See kafka.config.ts.
+  KAFKA_SSL_CA: Joi.string().allow('').default(''),
   CONSENT_ENFORCEMENT: Joi.string()
     .valid('enforce', 'audit', 'off')
     .default('enforce'),

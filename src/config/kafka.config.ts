@@ -44,6 +44,13 @@ export const kafkaConfig = registerAs('kafka', () => ({
   // a plaintext broker (docker compose) must be able to connect. Set
   // KAFKA_SSL=true for a TLS broker (managed Kafka, Confluent Cloud, …).
   ssl: process.env.KAFKA_SSL === 'true',
+  // Some managed Kafka providers (Aiven, notably) terminate TLS with a
+  // certificate signed by their OWN CA, not a publicly trusted one — `ssl:
+  // true` alone verifies against Node's public root store and fails with
+  // "self-signed certificate in certificate chain". Paste that provider's CA
+  // certificate (PEM) here to fix it; left empty, `ssl: true` behaves exactly
+  // as before for a broker with a real public CA.
+  sslCa: process.env.KAFKA_SSL_CA ?? '',
   sasl:
     process.env.KAFKA_SASL_USERNAME && process.env.KAFKA_SASL_PASSWORD
       ? {

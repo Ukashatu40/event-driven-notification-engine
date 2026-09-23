@@ -50,7 +50,14 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
 
     const ssl = this.configService.get<boolean>('kafka.ssl');
     if (ssl) {
-      kafkaConfig.ssl = true;
+      const sslCa = this.configService.get<string>('kafka.sslCa');
+      // A provider-issued CA (Aiven, etc.) beats plain `ssl: true`, which
+      // only trusts Node's public root store and rejects a broker cert
+      // signed by the provider's own CA. Tolerate a literal "\n" in the
+      // pasted value — some env-var UIs flatten real newlines on paste.
+      kafkaConfig.ssl = sslCa
+        ? { ca: [sslCa.replace(/\\n/g, '\n')], rejectUnauthorized: true }
+        : true;
     }
 
     const sasl = this.configService.get('kafka.sasl');

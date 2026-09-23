@@ -42,7 +42,11 @@ creates and uses 3, comfortably inside that cap.
 3. Service page → **Overview** → copy the **Host** and **Port** (this is your bootstrap broker, `host:port`).
 4. **Users** tab (or the default `avnadmin` user) → copy the **Username** and **Password** — Aiven Kafka auth is SASL/PLAIN over
    TLS by default, which matches this app's `KAFKA_SASL_USERNAME`/`KAFKA_SASL_PASSWORD` config exactly.
-5. `KAFKA_BROKERS` = `host:port`, `KAFKA_SSL` = `true`, `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD` = from step 4.
+5. Service page → **Overview** → **CA Certificate** → download as `ca.pem`. Aiven's broker cert is signed by Aiven's own CA, not
+   a public one — without this, the app connects with `KAFKA_SSL=true` alone and fails with `self-signed certificate in
+   certificate chain`. Paste the whole file's contents (PEM header/footer included) into `KAFKA_SSL_CA`.
+6. `KAFKA_BROKERS` = `host:port`, `KAFKA_SSL` = `true`, `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD` = from step 4,
+   `KAFKA_SSL_CA` = the file from step 5.
 
 One free-tier quirk worth knowing: Aiven auto-pauses an idle free Kafka service ("idle shutdown") and also pauses a brand-new one
 that sees no traffic in its first few hours ("first-use shutdown") — send a real event through the app soon after setup so it
