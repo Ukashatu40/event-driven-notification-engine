@@ -162,6 +162,14 @@ jobs:
           npx prisma generate
           npx prisma migrate deploy
 
+      # Not fake dev data — AbTestingService.resolveVariant() requires an
+      # isActive `template` row for every event type on every dispatch, and
+      # this fresh database has no other seed step. Without this, any e2e
+      # test that waits for real delivery times out (event parked on the DLQ
+      # with "No active template found").
+      - name: Seed reference data (templates, provider health)
+        run: npm run seed:reference
+
       - name: API docs are up to date (generated from the controllers)
         run: npm run docs:openapi -- --check
 
