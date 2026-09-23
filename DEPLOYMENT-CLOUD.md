@@ -19,17 +19,20 @@ this plainly in your README rather than let someone discover it — it reads as 
 (Six, not five — Kafka no longer shares Upstash's account now that it needs its own provider; see below.)
 
 ### Postgres — [Neon](https://neon.tech)
+
 1. Sign up (no card). Create a project.
 2. Project → **Connection Details** → select **Pooled connection** → copy the full URL. It already ends `?sslmode=require`.
 3. That's your `DATABASE_URL`.
 
 ### Redis — [Upstash](https://upstash.com) (Redis database)
+
 1. Sign up. Create a Redis database (any region close to where you'll put Render).
 2. Database → **Details** tab → copy the **Endpoint** and **Password**. Use the TCP endpoint, not the REST URL — this app speaks
    the Redis protocol via `ioredis`, not Upstash's HTTP API.
 3. `REDIS_HOST` = endpoint, `REDIS_PORT` = 6379, `REDIS_PASSWORD` = the password, `REDIS_TLS` = `true`.
 
 ### Kafka — [Aiven](https://aiven.io) (Apache Kafka, free plan)
+
 Upstash discontinued Upstash Kafka in March 2025 — it's no longer in their console (that's the "no Cluster/Topics" you're seeing).
 Aiven's free Kafka plan is the replacement: no card required, standard Kafka protocol (this app talks to it with `kafkajs`, not a
 proprietary HTTP API, so it's a genuine drop-in), capped at 5 topics / 2 partitions each — this app only ever creates and uses 3,
@@ -71,11 +74,13 @@ that sees no traffic in its first few hours ("first-use shutdown") — send a re
 doesn't idle out before you've verified it works.
 
 ### RabbitMQ — [CloudAMQP](https://cloudamqp.com)
+
 1. Sign up. Create an instance on the **Little Lemur** (free) plan.
 2. Instance page → copy the **AMQP URL** (starts `amqps://`, already has credentials and the vhost baked in).
 3. That whole string is your `RABBITMQ_URL`.
 
 ### Email — you already have this (Brevo, from earlier)
+
 Reuse the same `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM`.
 
 ## 2. Deploy the backend — [Render](https://render.com), via Blueprint
@@ -94,7 +99,7 @@ three role login keys).
    - `CORS_ORIGINS` — you don't have the Vercel URL yet at this point; paste a placeholder (e.g. `http://localhost:5173`) and
      come back to fix it in step 3.5 once the frontend is deployed.
    - `PII_ENCRYPTION_KEY` / `PII_HASH_KEY` — generate with `openssl rand -hex 32` each. These must stay real hex; that's also why
-     they're *not* on the auto-generated list (Render's `generateValue` produces base64, which fails this app's format check).
+     they're _not_ on the auto-generated list (Render's `generateValue` produces base64, which fails this app's format check).
    - `SERVICE_API_KEY` / `OPERATOR_API_KEY` / `ADMIN_API_KEY` — one login key per ops role; generate each with
      `openssl rand -hex 24` (or similar) and keep a copy — these are what you'll type into `/login` afterward.
    - Run `scripts/bash/deploy/preflight.sh` against a local file with the same values before pasting them in, to catch a
@@ -120,7 +125,7 @@ the next deploy.
 ## 4. Give yourself a real login
 
 The bulk-seeded users have fake test contact details (`…@wealthbridge-test.in`, `+9190000000xx`) — nothing will actually arrive.
-Run this once, against the *cloud* database, from your own machine (point `DATABASE_URL`/`PII_*` at the cloud values locally, or
+Run this once, against the _cloud_ database, from your own machine (point `DATABASE_URL`/`PII_*` at the cloud values locally, or
 run it as a one-off Render shell command):
 
 ```bash
@@ -134,7 +139,7 @@ Then sign in at `https://<your-vercel-url>/portal/login` with that email — the
 The same checks run locally all session, against the real URLs this time:
 
 ```bash
-curl https://<render-url>/health              # every component "up"
+curl https://notification-engine-92d2.onrender.com/health              # every component "up"
 # sign in at https://<vercel-url>/login as ADMIN, send a RISK-001 event, watch it reach DELIVERED on the Live feed
 # sign in at https://<vercel-url>/portal/login with your seeded email, confirm the inbox/preferences/consent pages load
 ```

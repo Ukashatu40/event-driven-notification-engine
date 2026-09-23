@@ -24,6 +24,7 @@
     "whoami": "ts-node src/database/seeds/whoami.ts",
     "seed:me": "ts-node src/database/seeds/seed-me.ts",
     "seed:reference": "ts-node src/database/seeds/seed-reference-data.ts",
+    "seed:demo": "ts-node src/database/seeds/seed-demo.ts",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./tests/jest-e2e.config.ts",
