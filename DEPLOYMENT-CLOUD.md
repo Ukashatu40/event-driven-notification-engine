@@ -44,9 +44,11 @@ creates and uses 3, comfortably inside that cap.
    TLS by default, which matches this app's `KAFKA_SASL_USERNAME`/`KAFKA_SASL_PASSWORD` config exactly.
 5. Service page → **Overview** → **CA Certificate** → download as `ca.pem`. Aiven's broker cert is signed by Aiven's own CA, not
    a public one — without this, the app connects with `KAFKA_SSL=true` alone and fails with `self-signed certificate in
-   certificate chain`. Paste the whole file's contents (PEM header/footer included) into `KAFKA_SSL_CA`.
+   certificate chain`. Set `KAFKA_SSL_CA` to its **base64**, not the raw file — genuinely one line, so a web form's text input
+   has nothing to mangle on paste: `base64 -i ca.pem | tr -d '\n'` on macOS (`base64 -w0 ca.pem` on Linux). Raw multi-line PEM
+   also works — the app detects either form — but base64 is the one that can't go wrong in transit.
 6. `KAFKA_BROKERS` = `host:port`, `KAFKA_SSL` = `true`, `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD` = from step 4,
-   `KAFKA_SSL_CA` = the file from step 5.
+   `KAFKA_SSL_CA` = the base64 string from step 5.
 
 One free-tier quirk worth knowing: Aiven auto-pauses an idle free Kafka service ("idle shutdown") and also pauses a brand-new one
 that sees no traffic in its first few hours ("first-use shutdown") — send a real event through the app soon after setup so it

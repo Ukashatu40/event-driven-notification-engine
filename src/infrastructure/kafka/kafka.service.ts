@@ -17,6 +17,28 @@ import {
   ProducerConfig,
 } from 'kafkajs';
 
+/**
+ * Accepts KAFKA_SSL_CA as raw PEM (real newlines), PEM with literal "\n"
+ * escapes (some env-var UIs flatten real newlines on paste), or — the
+ * recommended form — base64 of the whole PEM file. Base64 is the robust
+ * choice: it's genuinely one line, so there is nothing left for a web form's
+ * text input to mangle, unlike a multi-line paste (a single-line `<input>`
+ * commonly collapses newlines into nothing, not even a literal "\n", which
+ * left the previous "\n"-only fix unable to help — the resulting jammed-
+ * together string isn't valid PEM, and kafkajs fails exactly as if no CA
+ * had been given at all: the same "self-signed certificate" error).
+ */
+export function normalizeCaCert(raw: string): string {
+  const withRealNewlines = raw.replace(/\\n/g, '\n');
+  if (withRealNewlines.includes('-----BEGIN CERTIFICATE-----')) {
+    return withRealNewlines;
+  }
+  const decoded = Buffer.from(raw.trim(), 'base64').toString('utf8');
+  return decoded.includes('-----BEGIN CERTIFICATE-----')
+    ? decoded
+    : withRealNewlines;
+}
+
 export interface KafkaMessage {
   key?: string;
   value: Record<string, unknown>;
@@ -53,10 +75,10 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       const sslCa = this.configService.get<string>('kafka.sslCa');
       // A provider-issued CA (Aiven, etc.) beats plain `ssl: true`, which
       // only trusts Node's public root store and rejects a broker cert
-      // signed by the provider's own CA. Tolerate a literal "\n" in the
-      // pasted value — some env-var UIs flatten real newlines on paste.
+      // signed by the provider's own CA. See normalizeCaCert() for why the
+      // raw value can be PEM, "\n"-escaped PEM, or (recommended) base64.
       kafkaConfig.ssl = sslCa
-        ? { ca: [sslCa.replace(/\\n/g, '\n')], rejectUnauthorized: true }
+        ? { ca: [normalizeCaCert(sslCa)], rejectUnauthorized: true }
         : true;
     }
 

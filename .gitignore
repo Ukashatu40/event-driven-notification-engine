@@ -3,7 +3,7 @@ node_modules
 /generated/prisma
 
 /generated/prisma
-
+ca.pem
 .env
 .env.local
 .env.development

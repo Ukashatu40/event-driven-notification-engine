@@ -17,7 +17,10 @@ jest.mock('kafkajs', () => ({
   }),
 }));
 
-import { KafkaService } from '../../../src/infrastructure/kafka/kafka.service';
+import {
+  KafkaService,
+  normalizeCaCert,
+} from '../../../src/infrastructure/kafka/kafka.service';
 
 function build(config: Record<string, unknown>) {
   const configService = { get: (key: string) => config[key] };
@@ -57,5 +60,35 @@ describe('KafkaService SSL construction', () => {
       '-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----',
     );
     expect(passed).not.toContain('\\n');
+  });
+
+  it('accepts a base64-encoded CA — the robust form for a form field that collapses newlines', () => {
+    const pem = '-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----';
+    build({
+      'kafka.ssl': true,
+      'kafka.sslCa': Buffer.from(pem, 'utf8').toString('base64'),
+    });
+    expect(kafkaCtor.mock.calls[0][0].ssl.ca[0]).toBe(pem);
+  });
+});
+
+describe('normalizeCaCert', () => {
+  const pem = '-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----';
+
+  it('passes real PEM through unchanged', () => {
+    expect(normalizeCaCert(pem)).toBe(pem);
+  });
+
+  it('un-escapes a literal backslash-n', () => {
+    expect(normalizeCaCert(pem.replace(/\n/g, '\\n'))).toBe(pem);
+  });
+
+  it('decodes base64', () => {
+    expect(normalizeCaCert(Buffer.from(pem).toString('base64'))).toBe(pem);
+  });
+
+  it('falls through unchanged when it is neither — never silently drops a broken value', () => {
+    const garbage = 'not a certificate at all';
+    expect(normalizeCaCert(garbage)).toBe(garbage);
   });
 });

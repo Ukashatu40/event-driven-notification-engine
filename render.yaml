@@ -114,9 +114,10 @@ services:
         sync: false
       # Aiven's Kafka broker cert is signed by Aiven's own CA, not a public
       # one — ssl:true alone fails with "self-signed certificate in
-      # certificate chain". Paste the CA certificate from the Aiven console
-      # (Service → Overview → "CA Certificate", download as ca.pem) here,
-      # whole, PEM header/footer included. See kafka.config.ts.
+      # certificate chain". Aiven console → Service → Overview → "CA
+      # Certificate" → download as ca.pem, then paste its BASE64 here (one
+      # line, nothing for a form field to mangle): on macOS,
+      # `base64 -i ca.pem | tr -d '\n'`; on Linux, `base64 -w0 ca.pem`.
       - key: KAFKA_SSL_CA
         sync: false
       - key: RABBITMQ_URL
