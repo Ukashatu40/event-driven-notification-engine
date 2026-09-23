@@ -32,6 +32,12 @@ import { WebhookDlrController } from '../../../src/delivery/webhooks/webhook-dlr
 import { PaymentsController } from '../../../src/payments/payments.controller';
 import { ConsentController } from '../../../src/compliance/consent.controller';
 import { ComplianceAuditController } from '../../../src/compliance/audit/compliance-audit.controller';
+import { UsersController } from '../../../src/users/users.controller';
+import { MeController } from '../../../src/me/me.controller';
+import {
+  UserAuthController,
+  SignupController,
+} from '../../../src/auth/user-auth.controller';
 
 const CONTROLLERS = [
   AppController,
@@ -47,6 +53,13 @@ const CONTROLLERS = [
   PaymentsController,
   ConsentController,
   ComplianceAuditController,
+  // Added after the fact, twice: UsersController shipped without being added
+  // here, so this test was not actually covering it. Don't repeat that — a
+  // new controller belongs in this list in the same commit that adds it.
+  UsersController,
+  MeController,
+  UserAuthController,
+  SignupController,
 ];
 
 interface Route {
@@ -172,6 +185,8 @@ describe('RBAC policy — who may do what (spec A10.1.A)', () => {
         'HealthController',
         'WebhookDlrController',
         'PaymentsController',
+        'UserAuthController',
+        'SignupController',
       ].includes(x.controller),
     )) {
       expect({
@@ -179,6 +194,36 @@ describe('RBAC policy — who may do what (spec A10.1.A)', () => {
         isPublic: r.isPublic,
       }).toEqual({ r: `${r.controller}.${r.handler}`, isPublic: true });
     }
+  });
+
+  it('every /me route requires exactly the USER role, never ADMIN/OPERATOR/SERVICE', () => {
+    const meRoutes = routes.filter((r) => r.controller === 'MeController');
+    expect(meRoutes.length).toBeGreaterThan(0);
+    for (const r of meRoutes) {
+      expect({ r: `${r.controller}.${r.handler}`, roles: r.roles }).toEqual({
+        r: `${r.controller}.${r.handler}`,
+        roles: ['USER'],
+      });
+    }
+  });
+
+  it('the user directory (UsersController) is ops-only — USER is never listed', () => {
+    expect(roles('UsersController', 'list')).toEqual([
+      'ADMIN',
+      'OPERATOR',
+      'SERVICE',
+    ]);
+  });
+
+  it("USER is never in an ops route's role list (no ops route accidentally reachable by an end-user token)", () => {
+    const opsControllers = routes.filter(
+      (r) =>
+        r.controller !== 'MeController' &&
+        r.controller !== 'UserAuthController' &&
+        r.controller !== 'SignupController',
+    );
+    const leaked = opsControllers.filter((r) => r.roles?.includes('USER'));
+    expect(leaked.map((r) => `${r.controller}.${r.handler}`)).toEqual([]);
   });
 });
 
