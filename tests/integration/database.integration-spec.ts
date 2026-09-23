@@ -3,6 +3,9 @@
 // Facts about the REAL database schema that unit tests with mocks cannot prove.
 import { rawPool } from '../helpers/infra';
 import type { Pool } from 'pg';
+import { encryptPii } from '../../src/shared/utils/pii-masker.util';
+
+const PII_KEY = Buffer.from(process.env.PII_ENCRYPTION_KEY ?? '', 'hex');
 
 const suite = process.env.INFRA_UP === 'true' ? describe : describe.skip;
 
@@ -139,9 +142,31 @@ suite('database schema (integration)', () => {
     });
 
     it('stored ciphertext is not the plaintext and is not derivable by inspection', async () => {
-      const [u] = await q<{ phone: string }>(`select phone from users limit 1`);
-      expect(u.phone).toMatch(/^enc:v1:[A-Za-z0-9+/=]{40,}$/);
-      expect(u.phone).not.toMatch(/\+\d{6,}/);
+      // Deliberately self-contained, not `select ... limit 1` off whatever
+      // row happens to exist: on a fresh database (CI's docker-compose.test.yml
+      // starts empty, no seed step) the very first row `limit 1` finds can be
+      // the duplicate-key test above's literal 'enc:v1:a' fixture — a fake,
+      // intentionally-short placeholder, not real ciphertext — which made
+      // this test order-dependent and fail on a clean database.
+      const plaintext = '+919876500000';
+      const ciphertext = encryptPii(plaintext, PII_KEY);
+      const [row] = await q<{ id: string }>(
+        `insert into users (id, name, phone, email, "updatedAt")
+         values (gen_random_uuid(), 'ciphertext-format-check', $1, 'enc:v1:placeholder', now())
+         returning id`,
+        [ciphertext],
+      );
+      try {
+        const [u] = await q<{ phone: string }>(
+          `select phone from users where id = $1`,
+          [row.id],
+        );
+        expect(u.phone).toMatch(/^enc:v1:[A-Za-z0-9+/=]{40,}$/);
+        expect(u.phone).not.toMatch(/\+\d{6,}/);
+        expect(u.phone).not.toContain(plaintext);
+      } finally {
+        await pool.query(`delete from users where id = $1`, [row.id]);
+      }
     });
   });
 
