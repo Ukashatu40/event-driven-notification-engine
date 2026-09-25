@@ -59,6 +59,17 @@ export class NodemailerProvider implements IDeliveryProvider, OnModuleInit {
       port: this.config.get<number>('SMTP_PORT') ?? 587,
       secure: false,
       auth: { user, pass },
+      // nodemailer's default is 2 minutes for each of these — against a
+      // healthy relay (Brevo normally responds in 1-3s) that's needless
+      // latency; against a genuinely stuck connection (observed live:
+      // intermittent "Connection timeout" on a free-tier host's egress
+      // path) it means every failed attempt burns 2 full minutes before
+      // the retry backoff even starts, starving the retry budget down to
+      // 2-3 real attempts instead of the dozen a fast-failing timeout
+      // allows in the same wall-clock window.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 10_000,
     });
   }
 

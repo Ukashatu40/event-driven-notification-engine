@@ -6,6 +6,8 @@ node_modules
 ca.pem
 service.key
 service.cert
+notification-engine.env
+.env.me
 .env
 .env.local
 .env.development
