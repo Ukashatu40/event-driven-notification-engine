@@ -315,9 +315,26 @@ export class DeliveryService {
       { code: failure.code, reason: failure.message },
     );
 
-    await this.prisma.deadLetterQueue.create({
-      data: {
+    // upsert, not create: a rolling deploy briefly runs the old and new
+    // instance's consumers side by side, and both can end up processing the
+    // same already-exceeded-retries message — observed live as an unhandled
+    // "Unique constraint failed on the fields: (notificationId)" crash that
+    // then nacked the message into RabbitMQ's own DLX on top of the row
+    // already written by whichever instance got there first. Deliberately
+    // leaves resolved/resolvedBy/resolvedAt untouched on the update branch —
+    // an operator's manual resolution must never be silently reopened by a
+    // late-arriving duplicate failure.
+    await this.prisma.deadLetterQueue.upsert({
+      where: { notificationId },
+      create: {
         notificationId,
+        originalEvent: this.redactRecipient(originalEvent),
+        failureReason: failure.message,
+        retryCount,
+        lastError: failure.code,
+        failureClass: classifyFailure(failure.code, failure.message),
+      },
+      update: {
         originalEvent: this.redactRecipient(originalEvent),
         failureReason: failure.message,
         retryCount,

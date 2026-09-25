@@ -14,6 +14,14 @@ person to open the demo after a quiet spell watches a slow load; after that it's
 sent while it's asleep sits in Kafka/RabbitMQ and is processed the moment it wakes — nothing is lost, it's just not instant. Say
 this plainly in your README rather than let someone discover it — it reads as "I understand free-tier trade-offs," not as a flaw.
 
+Outbound SMTP to Brevo (port 587) intermittently sees a plain TCP "Connection timeout" — confirmed, via Brevo's own delivery log,
+that the connection never reaches them at all during these: it's Render's free-tier egress path, not Brevo throttling or a code
+bug (the same code, credentials and recipient succeed minutes before and after). The delivery pipeline already retries and
+eventually DLQs rather than losing anything, and `nodemailer.provider.ts` uses a 10s connection timeout (not nodemailer's 2-minute
+default) specifically so a transient blip gets several fast retries instead of a couple of slow ones. If this proves too frequent
+in practice, the next thing worth trying is port 465 (`SMTP_PORT=465`, implicit TLS — the provider already derives `secure` from
+the port) as a different egress path, or moving the backend off Render's free tier.
+
 ## 1. Create the six accounts, in this order
 
 (Six, not five — Kafka no longer shares Upstash's account now that it needs its own provider; see below.)

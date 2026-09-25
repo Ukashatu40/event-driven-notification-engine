@@ -36,7 +36,7 @@ describe('DeliveryService.process', () => {
     notification: { findUnique: jest.fn(), update: jest.fn() },
     notificationStateLog: { create: jest.fn() },
     deliveryAttempt: { create: jest.fn() },
-    deadLetterQueue: { create: jest.fn(), count: jest.fn() },
+    deadLetterQueue: { create: jest.fn(), upsert: jest.fn(), count: jest.fn() },
   };
   const prometheus = {
     recordDelivery: jest.fn(),
@@ -465,7 +465,7 @@ describe('DeliveryService.deadLetter', () => {
   const prisma: any = {
     notification: { findUnique: jest.fn(), update: jest.fn() },
     notificationStateLog: { create: jest.fn() },
-    deadLetterQueue: { create: jest.fn(), count: jest.fn() },
+    deadLetterQueue: { create: jest.fn(), upsert: jest.fn(), count: jest.fn() },
   };
   const prometheus = { notificationDlqDepth: { set: jest.fn() } };
 
@@ -504,10 +504,65 @@ describe('DeliveryService.deadLetter', () => {
     expect(prisma.notificationStateLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ fromStatus: 'ROUTED', toStatus: 'DLQ' }),
     });
-    expect(prisma.deadLetterQueue.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ notificationId: 'n-9', lastError: 'X' }),
-    });
+    expect(prisma.deadLetterQueue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { notificationId: 'n-9' },
+        create: expect.objectContaining({
+          notificationId: 'n-9',
+          lastError: 'X',
+        }),
+        update: expect.objectContaining({ lastError: 'X' }),
+      }),
+    );
     expect(prometheus.notificationDlqDepth.set).toHaveBeenCalledWith(7);
+  });
+
+  it('a second dead-letter for the same notification updates, never crashes', async () => {
+    // Real bug, observed live: a rolling deploy briefly runs the old and new
+    // instance's consumers side by side, and both ended up dead-lettering
+    // the same already-exceeded-retries notification — a raw create() threw
+    // "Unique constraint failed on the fields: (notificationId)", which then
+    // nacked the message into RabbitMQ's own DLX on top of the row the first
+    // instance had already written. upsert() must never throw here.
+    jest.resetAllMocks();
+    prisma.notification.findUnique.mockResolvedValue({ status: 'DLQ' });
+    prisma.deadLetterQueue.count.mockResolvedValue(1);
+    const noop = {} as never;
+    const service = new DeliveryService(
+      prisma,
+      prometheus as never,
+      ...(Array(13).fill(noop) as [
+        never,
+        never,
+        never,
+        never,
+        never,
+        never,
+        never,
+        never,
+        never,
+        never,
+        never,
+        never,
+        never,
+      ]),
+    );
+
+    await expect(
+      service.deadLetter('n-9', { a: 1 }, { message: 'boom again', code: 'X' }),
+    ).resolves.not.toThrow();
+
+    expect(prisma.deadLetterQueue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { notificationId: 'n-9' },
+        update: expect.objectContaining({ failureReason: 'boom again' }),
+      }),
+    );
+    // resolved/resolvedBy/resolvedAt are absent from the update branch — an
+    // operator's manual resolution must never be silently reopened.
+    const updateData = prisma.deadLetterQueue.upsert.mock.calls[0][0].update;
+    expect(updateData).not.toHaveProperty('resolved');
+    expect(updateData).not.toHaveProperty('resolvedBy');
   });
 
   it('never stores a phone/email address in the DLQ payload', async () => {
@@ -542,7 +597,7 @@ describe('DeliveryService.deadLetter', () => {
     );
 
     const stored =
-      prisma.deadLetterQueue.create.mock.calls[0][0].data.originalEvent;
+      prisma.deadLetterQueue.upsert.mock.calls[0][0].create.originalEvent;
     expect(stored.recipient).toBe('[redacted]');
     expect(JSON.stringify(stored)).not.toContain('+2348012345678');
   });

@@ -54,10 +54,17 @@ export class NodemailerProvider implements IDeliveryProvider, OnModuleInit {
       return;
     }
 
+    const port = this.config.get<number>('SMTP_PORT') ?? 587;
     this.transporter = nodemailer.createTransport({
       host,
-      port: this.config.get<number>('SMTP_PORT') ?? 587,
-      secure: false,
+      port,
+      // Was hardcoded false regardless of port — silently wrong (STARTTLS
+      // handshake on a socket the server expects to be already-encrypted)
+      // for port 465 specifically. Worth being correct now: if 587 keeps
+      // seeing intermittent connection timeouts on a given host's egress
+      // path, 465 (implicit TLS) is the standard fallback to try, and it
+      // needs secure:true or the connection fails a different way.
+      secure: port === 465,
       auth: { user, pass },
       // nodemailer's default is 2 minutes for each of these — against a
       // healthy relay (Brevo normally responds in 1-3s) that's needless
